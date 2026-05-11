@@ -142,11 +142,11 @@
 <body>
     <div class="error-container" style="gap:12px;">
         <img src="{{ url_for('static', filename='LOGOSQI.jpg') }}" alt="SQI Logo" class="logo">
-        <img src="/IPPELLOGO.jpg" alt="IPPEL Logo" class="logo apply-logo"
-             data-logo-primary="/IPPELLOGO.jpg"
+        <img src="{{ url_for('static', filename='IPPELLOGO.jpg') }}" alt="IPPEL Logo" class="logo apply-logo"
+             data-logo-primary="{{ url_for('static', filename='IPPELLOGO.jpg') }}"
              data-logo-fallback1="/IPPELLOGO.jpg"
              data-logo-fallback2="{{ url_for('static', filename='LOGOSQI.jpg') }}"
-             onerror="if(this.dataset.try1!=='1'){this.dataset.try1='1'; this.src=this.dataset.logoFallback1;} else if(this.dataset.try2!=='1'){this.dataset.try2='1'; this.src=this.dataset.logoFallback2;} else {this.style.display='none';}">
+             onerror="if(this.dataset.try1!=='1'){this.dataset.try1='1'; this.src=this.dataset.logoFallback1;} else if(this.dataset.try2!=='1'){this.dataset.try2='1'; this.src=this.dataset.logoFallback2;} else {this.style.display='none';}}">
         <div class="error-icon">⚠️</div>
         <h1 class="error-title">Ops! Algo deu errado</h1>
         <p class="error-message">{{ message or 'Ocorreu um erro inesperado. Tente novamente.' }}</p>

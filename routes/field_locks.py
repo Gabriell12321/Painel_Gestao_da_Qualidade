@@ -44,12 +44,20 @@ AVAILABLE_FIELDS = {
     'responsavel': '👤 Responsável pela Detecção',
     'inspetor': '🔍 Inspetor',
     'setor': '🏭 Setor',
-    'area_responsavel': '🎯 Área Responsável',
+    'area_responsavel': '🎯 Setor Responsável',
+    'causador_user_id': '👤 Nome Causador (ID)',
+    'nome_responsavel': '👤 Nome Causador',
     
-    # === ASSINATURAS ===
-    'signature_inspection_name': '✍️ Assinatura: Responsável',
-    'signature_engineering_name': '✍️ Assinatura: Gerente',
-    'signature_inspection2_name': '✍️ Assinatura: Líder',
+    # === ASSINATURAS CABEÇALHO ===
+    'ass_responsavel': '✍️ Assinatura Responsável (Cabeçalho)',
+    'data_emissao': '📅 Data (Cabeçalho)',
+    'assinatura_causador': '✍️ Assinatura Causador',
+    'assinatura_lider': '✍️ Assinatura Líder/Gerente Setor',
+    
+    # === ASSINATURAS RODAPÉ ===
+    'signature_inspection_name': '✍️ Assinatura: Responsável (Visto Qualidade)',
+    'signature_engineering_name': '✍️ Assinatura: Gerente (Visto Gerente)',
+    'signature_inspection2_name': '✍️ Assinatura: Líder (Visto Causador)',
     
     # === DATAS DE ASSINATURA ===
     'signature_inspection_date': '📅 Data: Assinatura Inspeção',
@@ -81,7 +89,8 @@ AVAILABLE_FIELDS = {
     'assigned_group_id': '👥 Grupo Atribuído',
     'shared_user_ids': '👥 Usuários Compartilhados',
     'shared_group_ids': '👥 Grupos Compartilhados',
-    'price': '💰 Custo Estimado (R$)',
+    'price': '💰 Valor Total (R$)',
+    'price_note': '📝 Observação (Valor)',
     'justificativa': '📋 Justificativa'
 }
 
@@ -465,6 +474,8 @@ def get_user_locked_fields(user_id, context='creation'):
     Retorna lista de campos bloqueados para um usuário
     baseado no grupo dele e no contexto (creation ou response)
     
+    GERENTES E SUB-GERENTES NÃO TÊM CAMPOS BLOQUEADOS
+    
     Args:
         user_id: ID do usuário
         context: 'creation' ou 'response' (padrão: 'creation')
@@ -485,6 +496,19 @@ def get_user_locked_fields(user_id, context='creation'):
             return []
         
         group_id = row[0]
+        
+        # VERIFICAR SE O USUÁRIO É GERENTE OU SUB-GERENTE DO SEU GRUPO
+        cursor.execute('''
+            SELECT manager_user_id, sub_manager_user_id 
+            FROM groups 
+            WHERE id = ?
+        ''', (group_id,))
+        managers = cursor.fetchone()
+        
+        if managers and (managers[0] == user_id or managers[1] == user_id):
+            conn.close()
+            logger.info(f"✅ User {user_id} é GERENTE/SUB-GERENTE - SEM BLOQUEIOS aplicados")
+            return []
         
         # Buscar campos bloqueados PARA O CONTEXTO ESPECÍFICO
         cursor.execute("""

@@ -1107,7 +1107,7 @@
             <div class="logos" style="display: flex; justify-content: center; align-items: center; gap: 100px; padding: 20px 0; margin-bottom: 20px;">
                 <!-- Logo IPPEL -->
                 <div class="logo-ippel">
-                    <img src="/IPPELLOGO.jpg" alt="IPPEL" class="logo-img" style="width: 120px; height: 120px; object-fit: contain;">
+                    <img src="/static/IPPELLOGO.jpg" alt="IPPEL" class="logo-img" style="width: 120px; height: 120px; object-fit: contain;">
                 </div>
                 
                 <!-- Logo RNC/SQI -->
@@ -1135,17 +1135,19 @@
 
             <!-- Conteúdo -->
             <div style="padding: 20px; background: white;">
-                <!-- Linha 1: CLIENTES | NUMERO DE DESENHO | REVISÃO -->
+                <!-- Linha 1: CLIENTES | NUMERO DE DESENHO | REVISÃO | DATA -->
                 <table style="margin-bottom: 0;">
                     <tr>
-                        <td class="field-label" style="width: 33.33%;">CLIENTES</td>
-                        <td class="field-label" style="width: 33.33%;">NUMERO DE DESENHO</td>
-                        <td class="field-label" style="width: 33.33%;">REVISÃO</td>
+                        <td class="field-label" style="width: 25%;">CLIENTES</td>
+                        <td class="field-label" style="width: 25%;">NUMERO DE DESENHO</td>
+                        <td class="field-label" style="width: 25%;">REVISÃO</td>
+                        <td class="field-label" style="width: 25%;">DATA</td>
                     </tr>
                     <tr>
                         <td class="field-value">{{ rnc.client or '-' }}</td>
                         <td class="field-value">{{ rnc.drawing or '-' }}</td>
                         <td class="field-value">{{ rnc.revision or '-' }}</td>
+                        <td class="field-value">{{ rnc.created_at[:10] if rnc.created_at else '-' }}</td>
                     </tr>
                 </table>
 
@@ -1243,31 +1245,17 @@
 
             <!-- Conteúdo -->
             <div style="padding: 20px; background: white;">
-                <!-- Linha 1: Setor responsável | Assinatura responsável | Data -->
+                <!-- Linha 1: Setor responsável | Assinatura responsável | Nome causador -->
                 <table style="margin-bottom: 0;">
                     <tr>
                         <td class="field-label" style="width: 33.33%;">SETOR RESPONSÁVEL</td>
                         <td class="field-label" style="width: 33.33%;">ASSINATURA RESPONSÁVEL</td>
-                        <td class="field-label" style="width: 33.33%;">DATA</td>
+                        <td class="field-label" style="width: 33.33%;">NOME CAUSADOR</td>
                     </tr>
                     <tr>
                         <td class="field-value">{{ rnc.area_responsavel_name or rnc.area_responsavel or rnc.setor_responsavel or '-' }}</td>
                         <td class="field-value">{{ rnc.ass_responsavel or rnc.gerente_grupo_name or '-' }}</td>
-                        <td class="field-value">{{ rnc.created_at[:10] if rnc.created_at else '-' }}</td>
-                    </tr>
-                </table>
-
-                <!-- Linha 2: Inspetor | Nome causador | Assinatura Causador -->
-                <table style="margin-bottom: 0;">
-                    <tr>
-                        <td class="field-label" style="width: 33.33%;">INSPETOR</td>
-                        <td class="field-label" style="width: 33.33%;">NOME CAUSADOR</td>
-                        <td class="field-label" style="width: 33.33%;">ASSINATURA CAUSADOR</td>
-                    </tr>
-                    <tr>
-                        <td class="field-value">{{ rnc.inspetor_name or rnc.inspetor or '-' }}</td>
                         <td class="field-value">{{ rnc.causador_name or rnc.responsavel_name or rnc.responsavel or '-' }}</td>
-                        <td class="field-value">{{ rnc.signature_inspection2_name or '-' }}</td>
                     </tr>
                 </table>
             </div>
@@ -1379,10 +1367,10 @@
                     <span>DATA: {{ rnc.signature_inspection_date or '__/__/____' }}</span>
                 </div>
                 <div style="width: 33.33%; padding: 8px; text-align: center; font-size: 10px; font-weight: bold; border-right: 1px solid #cccccc;">
-                    <span>DATA: {{ rnc.signature_engineering_date or '__/__/____' }}</span>
+                    <span>DATA: {{ rnc.signature_engineering_date or rnc.signature_inspection_date or '__/__/____' }}</span>
                 </div>
                 <div style="width: 33.33%; padding: 8px; text-align: center; font-size: 10px; font-weight: bold;">
-                    <span>DATA: {{ rnc.signature_inspection2_date or '__/__/____' }}</span>
+                    <span>DATA: {{ rnc.signature_inspection2_date or rnc.signature_inspection_date or '__/__/____' }}</span>
                 </div>
             </div>
 
@@ -1393,7 +1381,7 @@
                     <div style="border-top: 1px solid #6c757d; padding-top: 8px;">VISTO - Qualidade</div>
                 </div>
                 <div style="width: 33.33%; padding: 15px; text-align: center; font-size: 11px; font-weight: bold; border-right: 1px solid #cccccc;">
-                    <div style="margin-bottom: 25px;">{{ rnc.signature_engineering_name or '' }}</div>
+                    <div style="margin-bottom: 25px;">{{ rnc.signature_engineering_name or rnc.ass_responsavel or rnc.gerente_grupo_name or '' }}</div>
                     <div style="border-top: 1px solid #6c757d; padding-top: 8px;">VISTO - Gerente do Setor</div>
                 </div>
                 <div style="width: 33.33%; padding: 15px; text-align: center; font-size: 11px; font-weight: bold;">

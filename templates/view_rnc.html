@@ -652,15 +652,15 @@
         <div class="header">
             <div class="logo" style="gap:12px;">
                 <img src="{{ url_for('static', filename='LOGOSQI.jpg') }}" alt="SQI Logo">
-                <img src="/IPPELLOGO.jpg" alt="IPPEL Logo" class="apply-logo"
-                     data-logo-primary="/IPPELLOGO.jpg"
+                <img src="{{ url_for('static', filename='IPPELLOGO.jpg') }}" alt="IPPEL Logo" class="apply-logo"
+                     data-logo-primary="{{ url_for('static', filename='IPPELLOGO.jpg') }}"
                      data-logo-fallback1="/IPPELLOGO.jpg"
                      data-logo-fallback2="{{ url_for('static', filename='LOGOSQI.jpg') }}"
                      onerror="if(this.dataset.try1!=='1'){this.dataset.try1='1'; this.src=this.dataset.logoFallback1;} else if(this.dataset.try2!=='1'){this.dataset.try2='1'; this.src=this.dataset.logoFallback2;} else {this.style.display='none';}">
                 <div>
                     <div class="title">Relatório de Não Conformidades Internas – RNC</div>
                     <div class="rnc-number">Nº: {{ rnc.rnc_number }}</div>
-            </div>
+                </div>
             </div>
             <div class="actions">
                 <button class="btn btn-secondary" onclick="window.location.href='/dashboard'">← Voltar</button>
@@ -801,28 +801,37 @@
             <div class="card-body">
                 <!-- Informações técnicas organizadas -->
                 {% if txt_fields %}
-                    {% if txt_fields.get('Desenho') or txt_fields.get('DESENHO') or txt_fields.get('MP') or txt_fields.get('mp') %}
+                    {% if txt_fields.get('Desenho') or txt_fields.get('DESENHO') or txt_fields.get('MP') or txt_fields.get('mp') or rnc.drawing or rnc.revision or rnc.description_drawing %}
                     <div class="grid grid-3" style="margin-bottom: 20px;">
-                        {% if txt_fields.get('Desenho') or txt_fields.get('DESENHO') %}
+                        {% if txt_fields.get('Desenho') or txt_fields.get('DESENHO') or rnc.drawing %}
                         <div class="field">
                             <div class="label">📐 Desenho</div>
-                            <div class="value">{{ txt_fields.get('Desenho') or txt_fields.get('DESENHO') or '-' }}</div>
+                            <div class="value">{{ rnc.drawing or txt_fields.get('Desenho') or txt_fields.get('DESENHO') or '-' }}</div>
                 </div>
                 {% endif %}
-                        {% if txt_fields.get('MP') or txt_fields.get('mp') %}
+                        {% if txt_fields.get('Revisão') or txt_fields.get('REVISAO') or txt_fields.get('REV') or rnc.revision %}
                         <div class="field">
-                            <div class="label">🔧 MP</div>
-                            <div class="value">{{ txt_fields.get('MP') or txt_fields.get('mp') or '-' }}</div>
+                            <div class="label">� Revisão</div>
+                            <div class="value">{{ rnc.revision or txt_fields.get('Revisão') or txt_fields.get('REVISAO') or txt_fields.get('REV') or '-' }}</div>
                 </div>
                 {% endif %}
-                        {% if txt_fields.get('Revisão') or txt_fields.get('REVISAO') or txt_fields.get('REV') %}
+                        {% if txt_fields.get('MP') or txt_fields.get('mp') or rnc.mp %}
                         <div class="field">
-                            <div class="label">📝 Revisão</div>
-                            <div class="value">{{ txt_fields.get('Revisão') or txt_fields.get('REVISAO') or txt_fields.get('REV') or '-' }}</div>
+                            <div class="label">� MP</div>
+                            <div class="value">{{ rnc.mp or txt_fields.get('MP') or txt_fields.get('mp') or '-' }}</div>
                 </div>
                 {% endif %}
             </div>
             {% endif %}
+                    
+                    {% if rnc.description_drawing %}
+                    <div class="grid grid-1" style="margin-bottom: 20px;">
+                        <div class="field">
+                            <div class="label">📋 Descrição do Desenho</div>
+                            <div class="value">{{ rnc.description_drawing }}</div>
+                        </div>
+                    </div>
+                    {% endif %}
                     
                     {% if txt_fields.get('CV') or txt_fields.get('cv') or txt_fields.get('POS') or txt_fields.get('Pos') %}
                     <div class="grid grid-3" style="margin-bottom: 20px;">
@@ -887,23 +896,13 @@
             </div>
                 {% endif %}
                 
-                <!-- Descrição da RNC -->
-                {% if txt_fields.get('Descrição da RNC') or txt_fields.get('DESCRIÇÃO DA RNC') or txt_fields.get('Descricao da RNC') or txt_fields.get('DESCRICAO DA RNC') %}
-                <div class="field" style="margin-top: 20px;">
-                    <div class="label">📋 Descrição da RNC</div>
-                    <div class="value" style="min-height: 60px; white-space: pre-wrap;">{{ txt_fields.get('Descrição da RNC') or txt_fields.get('DESCRIÇÃO DA RNC') or txt_fields.get('Descricao da RNC') or txt_fields.get('DESCRICAO DA RNC') }}</div>
-                        </div>
-                {% elif rnc.description %}
-                <div class="field" style="margin-top: 20px;">
-                    <div class="label">📄 Descrição</div>
-                    <div class="value" style="min-height: 60px; white-space: pre-wrap;">{{ rnc.description }}</div>
-                        </div>
-                {% else %}
-                <div class="field" style="margin-top: 20px;">
-                    <div class="label">📄 Descrição</div>
-                    <div class="value" style="min-height: 60px; white-space: pre-wrap; color: #6c757d; font-style: italic;">
-                        📝 Descrição da não conformidade a ser preenchida
-                        </div>
+                <!-- Descrição da RNC (campo principal description) -->
+                {% if txt_fields.get('Descrição da RNC') or txt_fields.get('DESCRIÇÃO DA RNC') or txt_fields.get('Descricao da RNC') or txt_fields.get('DESCRICAO DA RNC') or rnc.description %}
+                <div class="field" style="margin-top: 20px; border-top: 2px solid #8b1538; padding-top: 20px;">
+                    <div class="label" style="font-size: 16px; font-weight: 700; color: #8b1538;">📋 DESCRIÇÃO DA NÃO CONFORMIDADE</div>
+                    <div class="value" style="min-height: 80px; white-space: pre-wrap; font-size: 14px; line-height: 1.6;">
+                        {{ rnc.description or txt_fields.get('Descrição da RNC') or txt_fields.get('DESCRIÇÃO DA RNC') or txt_fields.get('Descricao da RNC') or txt_fields.get('DESCRICAO DA RNC') or 'Não informado' }}
+                    </div>
                         </div>
                 {% endif %}
                         </div>

@@ -16,7 +16,8 @@ _pool_lock = threading.Lock()
 
 
 def _new_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30.0)
+    conn.row_factory = sqlite3.Row
     # CRITICAL: Configure UTF-8 encoding to handle accents correctly
     conn.text_factory = str
     conn.execute('PRAGMA encoding="UTF-8"')
@@ -26,6 +27,7 @@ def _new_connection() -> sqlite3.Connection:
     conn.execute('PRAGMA cache_size=10000')
     conn.execute('PRAGMA temp_store=MEMORY')
     conn.execute('PRAGMA mmap_size=268435456')
+    conn.execute('PRAGMA busy_timeout=30000')
     return conn
 
 

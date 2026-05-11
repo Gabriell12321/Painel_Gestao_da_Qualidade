@@ -112,11 +112,11 @@
                 <!-- SQI à esquerda -->
                 <img src="{{ url_for('static', filename='LOGOSQI.jpg') }}" alt="SQI Logo" class="logo">
                 <!-- IPPEL à direita -->
-                <img src="/IPPELLOGO.jpg" 
+                <img src="/static/IPPELLOGO.jpg" 
                      alt="IPPEL Logo" 
                      class="logo apply-logo"
-                     data-logo-primary="/IPPELLOGO.jpg"
-                     data-logo-fallback1="/IPPELLOGO.jpg"
+                     data-logo-primary="/static/IPPELLOGO.jpg"
+                     data-logo-fallback1="/static/IPPELLOGO.jpg"
                      data-logo-fallback2="{{ url_for('static', filename='LOGOSQI.jpg') }}"
                      onerror="if(this.dataset.try1!=='1'){this.dataset.try1='1'; this.src=this.dataset.logoFallback1;} else if(this.dataset.try2!=='1'){this.dataset.try2='1'; this.src=this.dataset.logoFallback2;} else {this.style.display='none';}">
                 <div class="logo-text">IPPEL</div>

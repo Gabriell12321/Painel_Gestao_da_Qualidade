@@ -51,10 +51,52 @@
     <div class="header">
         <h1>RELATÓRIO RNC POR SETOR</h1>
         <p>Período: {{ start_date }} a {{ end_date }}</p>
+        {% if setor_filter and setor_filter != 'todos' %}
+        <p>Setor: {{ setor_filter }}</p>
+        {% endif %}
+        {% if valor_min or valor_max %}
+        <p>Valor: 
+            {% if valor_min %}R$ {{ valor_min }}{% else %}R$ 0{% endif %}
+            até 
+            {% if valor_max %}R$ {{ valor_max }}{% else %}sem limite{% endif %}
+        </p>
+        {% endif %}
         <p>Total de RNCs: {{ stats.total_rncs }}</p>
     </div>
     
-    
+    <!-- Resumo Estatístico -->
+    <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+        <h2 style="margin-bottom: 15px; color: #2c3e50;">📊 Resumo Estatístico</h2>
+        
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px;">
+            <div style="background: white; padding: 15px; border-radius: 8px; text-align: center; border: 1px solid #e9ecef;">
+                <div style="font-size: 24px; font-weight: bold; color: #2c3e50;">{{ stats.total_rncs }}</div>
+                <div style="color: #7f8c8d; font-size: 12px;">Total de RNCs</div>
+            </div>
+            <div style="background: white; padding: 15px; border-radius: 8px; text-align: center; border: 1px solid #e9ecef;">
+                <div style="font-size: 24px; font-weight: bold; color: #2c3e50;">R$ {{ stats.total_value|brl }}</div>
+                <div style="color: #7f8c8d; font-size: 12px;">Valor Total</div>
+            </div>
+            <div style="background: white; padding: 15px; border-radius: 8px; text-align: center; border: 1px solid #e9ecef;">
+                <div style="font-size: 24px; font-weight: bold; color: #2c3e50;">{{ stats.num_departments }}</div>
+                <div style="color: #7f8c8d; font-size: 12px;">Departamentos</div>
+            </div>
+        </div>
+        
+        <div style="margin-bottom: 15px;">
+            <strong>Por Status:</strong>
+            {% for status, count in stats.by_status.items() %}
+            <span style="display: inline-block; background: #e9ecef; padding: 5px 10px; border-radius: 4px; margin: 3px; font-size: 12px;">{{ status }}: {{ count }} RNCs</span>
+            {% endfor %}
+        </div>
+        
+        <div>
+            <strong>Por Departamento:</strong>
+            {% for dept, count in stats.by_department.items() %}
+            <span style="display: inline-block; background: #e9ecef; padding: 5px 10px; border-radius: 4px; margin: 3px; font-size: 12px;">{{ dept }}: {{ count }} RNCs</span>
+            {% endfor %}
+        </div>
+    </div>
     
     {# Organizar todos os RNCs por grupo #}
     {% set groups = {} %}
@@ -77,11 +119,13 @@
     {% endfor %}
     
     
-    {# Total geral #}
-    {% set total_value = 0 %}
-    {% for g in groups.values() %}{% set total_value = total_value + g.total %}{% endfor %}
+    {# Total geral - usando namespace para persistir valor no loop #}
+    {% set ns = namespace(total_value=0) %}
+    {% for g in groups.values() %}
+        {% set ns.total_value = ns.total_value + g.total %}
+    {% endfor %}
     <div class="sector-header" style="margin-bottom:10px;">
-        Total Geral — R$ {{ total_value|brl }} ({{ stats.total_rncs }} RNCs)
+        Total Geral — R$ {{ ns.total_value|brl }} ({{ stats.total_rncs }} RNCs)
     </div>
     
     {# Renderizar por grupo #}

@@ -1,0 +1,1163 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualização R.O - {{ ro.ro_number }}</title>
+    <style>
+        /* CSS completamente local - sem imports externos */
+        :root {
+            --primary-red: #6c757d;
+            --secondary-red: #6c757d;
+            --accent-blue: #2c3e50;
+            --light-gray: #f8f9fa;
+            --border-gray: #e9ecef;
+            --text-dark: #2c3e50;
+            --text-muted: #6c757d;
+            --success-green: #28a745;
+            --warning-orange: #ffc107;
+            --danger-red: #dc3545;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'Liberation Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+            background: linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 30%, #dddddd 70%, #d0d0d0 100%);
+            padding: 0;
+            margin: 0;
+            min-height: 100vh;
+            position: relative;
+            overflow-x: hidden;
+            color: var(--text-dark);
+            line-height: 1.4;
+            font-size: 13px;
+        }
+
+        /* Header com controles */
+        .print-controls {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 12px 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            border-bottom: 1px solid var(--border-gray);
+        }
+
+        .controls-container {
+            max-width: 800px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .controls-left, .controls-right {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background: var(--primary-red);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--secondary-red);
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(193, 39, 45, 0.3);
+        }
+
+        .btn-secondary {
+            background: var(--accent-blue);
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #34495e;
+            transform: translateY(-1px);
+        }
+
+        .btn-outline {
+            background: transparent;
+            color: var(--primary-red);
+            border: 1px solid var(--primary-red);
+        }
+
+        .btn-outline:hover {
+            background: var(--primary-red);
+            color: white;
+        }
+
+        .btn-print {
+            background: var(--success-green);
+            color: white;
+        }
+
+        .btn-print:hover {
+            background: #218838;
+            transform: translateY(-1px);
+        }
+
+        /* Container principal - ULTRA EXTREMO para uma folha só */
+        .container {
+            width: 100vw;
+            height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #ffffff 0%, #fdfdfd 50%, #fafafa 100%);
+            padding: 35px;
+            box-shadow: 0 32px 64px rgba(0, 0, 0, 0.18);
+            border-radius: 0;
+            overflow-y: auto;
+            border-top: 8px solid #6c757d;
+            position: relative;
+        }
+
+        .header {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 15px;
+            border-bottom: none;
+            padding-bottom: 0;
+            position: relative;
+        }
+
+        .logo-ippel {
+            width: 120px;
+            height: 120px;
+            background: transparent;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .logo-ippel:hover {
+            transform: scale(1.05);
+        }
+
+        /* Tabelas ULTRA compactas - sem espaços desnecessários */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 3px;
+            font-size: 9px;
+            border-radius: 1px;
+            overflow: hidden;
+            box-shadow: 0 1px 1px rgba(0,0,0,0.03);
+        }
+
+        table td, table th {
+            border: 1px solid var(--border-gray);
+            padding: 2px 4px;
+            text-align: left;
+            vertical-align: top;
+            line-height: 1.4;
+        }
+        
+        table td {
+            height: auto !important;
+            min-height: auto !important;
+            max-height: none !important;
+        }
+        
+        table td strong {
+            display: inline-block;
+            min-width: fit-content;
+        }           
+
+        /* Listras alternadas para as linhas da tabela */
+        table tbody tr:nth-child(odd) {
+            background-color: #f8f9fa !important;
+        }
+        
+        table tbody tr:nth-child(even) {
+            background-color: white !important;
+        }
+        
+        /* Garantir que as células herdem a cor da linha */
+        table tbody tr:nth-child(odd) td {
+            background-color: #f8f9fa !important;
+        }
+        
+        table tbody tr:nth-child(even) td {
+            background-color: white !important;
+        }
+        
+        /* Reduzir espaçamento na linha do MATERIAL */
+        .material-row td {
+            padding: 1px 3px !important;
+            min-height: 14px !important;
+            line-height: 1.1 !important;
+        }
+
+        table th {
+            background: linear-gradient(135deg, var(--primary-red) 0%, var(--secondary-red) 100%);
+            color: white;
+            font-weight: 600;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.2px;
+        }
+
+        /* Seções com títulos ULTRA EXTREMAMENTE compactos */
+        .section-title {
+            background: linear-gradient(135deg, var(--primary-red) 0%, var(--secondary-red) 100%) !important;
+            color: white !important;
+            text-align: center;
+            font-weight: bold;
+            font-size: 10px;
+            padding: 3px !important;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            position: relative;
+        }
+
+        .section-title::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 1px;
+            background: linear-gradient(90deg, var(--accent-blue) 0%, var(--success-green) 100%);
+        }
+
+        .section-table {
+            margin-bottom: 4px;
+        }
+
+        /* Campos de texto compactos */
+        .text-block {
+            min-height: 24px;
+            padding: 4px 6px;
+            word-wrap: break-word;
+            background: var(--light-gray);
+            border-radius: 1px;
+            border: 1px solid var(--border-gray);
+            font-size: 9px;
+            line-height: 1.3;
+            color: var(--text-dark);
+        }
+
+        /* ========================================== */
+        /* MODO DE IMPRESSÃO - FOLHA A4 COMPLETA */
+        /* ========================================== */
+        @media print {
+            /* REMOVER BOTÕES E CONTROLES */
+            .action-bar,
+            .create-mode-banner,
+            .no-print,
+            .print-controls,
+            button {
+                display: none !important;
+            }
+            
+            /* Configuração da página */
+            @page {
+                size: A4 portrait;
+                margin: 3mm 8mm 3mm 8mm;
+            }
+            
+            body {
+                background: white !important;
+                margin: 0;
+                padding: 0;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+                color: #000 !important;
+            }
+            
+            .container {
+                box-shadow: none !important;
+                border: none !important;
+                border-top: none !important;
+                padding: 0 !important;
+                padding-bottom: 0 !important;
+                margin: 0 !important;
+                width: 100%;
+                height: auto;
+                overflow: visible;
+                border-radius: 0 !important;
+                background: white !important;
+            }
+            
+            /* ===== HEADER E LOGOS - EXIBIR CENTRALIZADAS NA IMPRESSÃO ===== */
+            .header {
+                display: block !important;
+                page-break-after: avoid !important;
+                margin-bottom: 1px !important;
+                margin-top: 0 !important;
+                text-align: center !important;
+            }
+            
+            .logos {
+                display: flex !important;
+                justify-content: center !important;
+                align-items: center !important;
+                gap: 60px !important;
+                padding: 3px 0 !important;
+                margin: 0 !important;
+                page-break-after: avoid !important;
+            }
+            
+            .logo-ippel img,
+            .logo-ro img {
+                display: block !important;
+                width: 70px !important;
+                height: 70px !important;
+                object-fit: contain !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            
+            /* ===== TÍTULOS - SEM MARGEM ===== */
+            .title-section {
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            
+            .main-title {
+                font-size: 14px !important;
+                margin-bottom: 0 !important;
+                margin-top: 0 !important;
+                padding: 0 !important;
+                color: #000 !important;
+                line-height: 1.1 !important;
+                font-weight: bold !important;
+                -webkit-text-fill-color: #000 !important;
+                background: none !important;
+            }
+            
+            .subtitle {
+                font-size: 9px !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                line-height: 1.0 !important;
+                color: #333 !important;
+            }
+            
+            .form-code {
+                font-size: 8px !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                line-height: 1.0 !important;
+                color: #333 !important;
+            }
+            
+            .ro-number {
+                margin: 1px 0 !important;
+                padding: 2px 5px !important;
+                border-radius: 0 !important;
+                text-align: center !important;
+                font-size: 11px !important;
+                font-weight: bold !important;
+                background: #f5f5f5 !important;
+                border: 1px solid #333 !important;
+                line-height: 1.0 !important;
+                color: #000 !important;
+            }
+            
+            .ro-number::before {
+                content: '' !important;
+                margin: 0 !important;
+            }
+            
+            /* ===== SEÇÕES - ESPAÇAMENTO COMPACTO ===== */
+            div[style*="margin: 25px 0"] {
+                margin: 0 0 2px 0 !important;
+                border: 1px solid #333 !important;
+                border-radius: 0 !important;
+                page-break-inside: avoid !important;
+                box-shadow: none !important;
+            }
+            
+            /* Headers de seção */
+            div[style*="background: linear-gradient"],
+            div[style*="background: #6c757d"] {
+                background: #d0d0d0 !important;
+                color: #000 !important;
+                padding: 3px 5px !important;
+                font-size: 9px !important;
+                font-weight: bold !important;
+                border: none !important;
+                border-bottom: 1px solid #333 !important;
+                line-height: 1.2 !important;
+                margin: 0 !important;
+                min-height: auto !important;
+                text-transform: uppercase !important;
+            }
+            
+            /* Padding das seções */
+            div[style*="padding: 20px"],
+            div[style*="padding: 15px"] {
+                padding: 5px 6px !important;
+                background: #fff !important;
+                margin: 0 !important;
+            }
+            
+            /* ===== TABELAS ===== */
+            table {
+                width: 100% !important;
+                border-collapse: collapse !important;
+                margin-bottom: 0 !important;
+                margin-top: 0 !important;
+                font-size: 8px !important;
+                page-break-inside: avoid !important;
+                border: none !important;
+                box-shadow: none !important;
+                table-layout: fixed !important;
+            }
+            
+            table td,
+            table th {
+                border: 1px solid #666 !important;
+                padding: 0px 2px !important;
+                color: #000 !important;
+                line-height: 1.0 !important;
+                height: 12px !important;
+                min-height: 12px !important;
+                max-height: 12px !important;
+                vertical-align: middle !important;
+                white-space: nowrap !important;
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
+                max-width: 0 !important;
+            }
+            
+            .field-label {
+                background: #e8e8e8 !important;
+                font-weight: bold !important;
+                font-size: 7px !important;
+                padding: 0px 2px !important;
+                height: 12px !important;
+                min-height: 12px !important;
+                max-height: 12px !important;
+                line-height: 1.0 !important;
+                color: #000 !important;
+            }
+            
+            .field-value {
+                background: white !important;
+                font-size: 7px !important;
+                padding: 0px 2px !important;
+                height: 12px !important;
+                min-height: 12px !important;
+                max-height: 12px !important;
+                line-height: 1.0 !important;
+                color: #000 !important;
+                font-weight: normal !important;
+                white-space: nowrap !important;
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
+            }
+            
+            .section-title {
+                background: #d0d0d0 !important;
+                color: #000 !important;
+                font-weight: bold !important;
+                font-size: 10px !important;
+                padding: 6px 10px !important;
+                border: none !important;
+                line-height: 1.4 !important;
+            }
+            
+            .section-content {
+                padding: 12px 15px !important;
+                font-size: 11px !important;
+                color: #000 !important;
+                background: white !important;
+                min-height: 60px !important;
+                line-height: 1.5 !important;
+                white-space: pre-wrap !important;
+                word-wrap: break-word !important;
+                word-break: break-word !important;
+                overflow-wrap: break-word !important;
+            }
+            
+            .section-content-large {
+                min-height: 90px !important;
+                padding: 15px 18px !important;
+                font-size: 11px !important;
+                line-height: 1.5 !important;
+                white-space: pre-wrap !important;
+                word-wrap: break-word !important;
+                word-break: break-word !important;
+            }
+            
+            .section-content-medium {
+                min-height: 80px !important;
+                padding: 12px 15px !important;
+                font-size: 11px !important;
+                line-height: 1.5 !important;
+                white-space: pre-wrap !important;
+                word-wrap: break-word !important;
+                word-break: break-word !important;
+            }
+            
+            .section-content-instruction {
+                min-height: 75px !important;
+                padding: 12px 15px !important;
+                font-size: 11px !important;
+                line-height: 1.5 !important;
+                white-space: pre-wrap !important;
+                word-wrap: break-word !important;
+                word-break: break-word !important;
+            }
+            
+            /* Regras específicas para as tabelas de descrição */
+            table .section-content-large,
+            table .section-content-medium,
+            table .section-content-instruction {
+                height: auto !important;
+            }
+            
+            /* ===== REMOVER EMOJIS ===== */
+            .form-number::before {
+                content: '' !important;
+            }
+            
+            /* ===== ESPAÇAMENTO ENTRE SEÇÕES ===== */
+            .section-table {
+                margin-bottom: 0 !important;
+                margin-top: 0 !important;
+            }
+            
+            /* ===== LABELS E TEXTOS ===== */
+            label {
+                font-size: 10px !important;
+                color: #000 !important;
+                font-weight: normal !important;
+                line-height: 1.4 !important;
+                white-space: pre-wrap !important;
+                word-wrap: break-word !important;
+                word-break: break-word !important;
+            }
+            
+            /* ===== EVITAR QUEBRAS DE PÁGINA ===== */
+            .container {
+                page-break-after: avoid !important;
+            }
+            
+            table,
+            div[style*="margin: 25px 0"] {
+                page-break-inside: avoid !important;
+            }
+            
+            /* ===== BORDAS E ESTILOS FINAIS ===== */
+            * {
+                box-shadow: none !important;
+            }
+        }
+
+        /* Animações suaves */
+        .header, table, .text-block {
+            transition: all 0.3s ease;
+        }
+
+        .header:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+        }
+
+        table:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.12);
+        }
+
+        .text-block:hover {
+            border-color: var(--primary-red);
+            box-shadow: 0 2px 6px rgba(193, 39, 45, 0.1);
+        }
+
+        /* Melhorias nos campos vazios */
+        .value:empty::before {
+            content: 'Não informado';
+            color: var(--text-muted);
+            font-style: italic;
+        }
+        
+        /* Esconde botões quando print_mode=True */
+        {% if print_mode %}
+        .print-controls {
+            display: none !important;
+        }
+        {% endif %}
+
+        /* Indicadores visuais */
+        .ro-number::before {
+            content: ' ';
+            margin-right: 5px;
+        }
+
+        .form-number::before {
+            content: ' ';
+            margin-right: 5px;
+        }
+
+        /* Espaçamento otimizado para uma folha */
+        .container {
+            padding: 12px;
+        }
+
+        /* ========================================== */
+        /* ESTILOS IGUAIS AO NEW_RNC.HTML */
+        /* ========================================== */
+        
+        /* Header styles */
+        .logos {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        .logo-ippel {
+            width: 120px;
+            height: 120px;
+            background: transparent;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+
+        .title-section {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .main-title {
+            font-size: 30px;
+            font-weight: 800;
+            margin-bottom: 15px;
+            background: linear-gradient(135deg, #6c757d 0%, #495057 30%, #343a40 70%, #212529 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: 1.5px;
+            position: relative;
+            text-align: center;
+        }
+
+        .subtitle {
+            font-size: 14px;
+            color: #6c757d;
+            font-weight: 600;
+            letter-spacing: 2px;
+            margin-bottom: 20px;
+        }
+
+        .form-code {
+            font-size: 12px;
+            color: #6c757d;
+            text-align: center;
+        }
+
+        /* Table styles igual ao new_rnc.html */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 8px;
+            background: white;
+            border: 1px solid #6c757d;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(108, 117, 125, 0.1);
+            table-layout: fixed;
+        }
+        
+        table td,
+        table th {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            word-break: break-word;
+            overflow-wrap: break-word;
+        }
+
+        .field-label {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            font-weight: bold;
+            font-size: 11px;
+            color: #495057;
+            padding: 8px 12px;
+            border: 1px solid #dee2e6;
+            text-align: left;
+            vertical-align: middle;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .field-value {
+            padding: 10px 12px;
+            border: 1px solid #dee2e6;
+            font-size: 13px;
+            color: #495057;
+            background: white;
+            vertical-align: middle;
+            min-height: 20px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            word-break: break-word;
+            overflow-wrap: break-word;
+        }
+
+        .section-title {
+            background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+            padding: 12px 20px;
+            text-align: center;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            border: none;
+        }
+
+        .section-content {
+            padding: 20px;
+            font-size: 15px;
+            color: #495057;
+            background: white;
+            border: 1px solid #dee2e6;
+            min-height: auto !important;
+            height: auto !important;
+            max-height: none !important;
+            vertical-align: top;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            word-break: break-word;
+            overflow-wrap: break-word;
+            overflow: visible !important;
+        }
+
+        /* Alturas específicas para cada tipo de campo - IGUAIS AO NEW_RNC.HTML */
+        .section-content-large {
+            min-height: auto !important;
+            height: auto !important;
+            max-height: none !important;
+            padding: 20px;
+            overflow: visible !important;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            word-break: break-word;
+            overflow-wrap: break-word;
+        }
+
+        .section-content-medium {
+            min-height: auto !important;
+            height: auto !important;
+            max-height: none !important;
+            padding: 20px;
+            overflow: visible !important;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            word-break: break-word;
+            overflow-wrap: break-word;
+        }
+
+        .section-content-instruction {
+            min-height: auto !important;
+            height: auto !important;
+            max-height: none !important;
+            padding: 20px;
+            overflow: visible !important;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            word-break: break-word;
+            overflow-wrap: break-word;
+        }
+
+        .header {
+            margin-bottom: 8px;
+        }
+
+        table {
+            margin-bottom: 8px;
+        }
+
+        .section-table {
+            margin-bottom: 8px;
+        }
+
+        /* Reduzir espaçamento entre blocos na visualização */
+        .container > div[style*="margin: 25px 0"] {
+            margin: 12px 0 !important;
+        }
+        
+        .container > table {
+            margin-bottom: 8px !important;
+        }
+
+        /* Ajustar tamanho dos campos para evitar overflow */
+        @media (max-width: 850px) {
+            .bottom-section {
+                grid-template-columns: 1fr;
+                gap: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Controles de impressão e navegação -->
+    <div class="print-controls">
+        <div class="controls-container">
+            <div class="controls-left">
+                <a href="/dashboard" class="btn btn-outline">
+                    ←
+                    Voltar
+                </a>
+                <button onclick="responderRO()" class="btn btn-primary">
+                    Responder
+                </button>
+            </div>
+            <div class="controls-right">
+                <button onclick="window.print()" class="btn btn-print">
+                   
+                    Imprimir
+                </button>
+             
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Header com logos IPPEL e RO centralizadas -->
+        <div class="header">
+            <div class="logos" style="display: flex; justify-content: center; align-items: center; gap: 100px; padding: 20px 0; margin-bottom: 20px;">
+                <!-- Logo IPPEL -->
+                <div class="logo-ippel">
+                    <img src="{{ url_for('static', filename='IPPELLOGO.jpg') }}" alt="IPPEL" class="logo-img" style="width: 120px; height: 120px; object-fit: contain;">
+                </div>
+                
+                <!-- Logo RO/SQI -->
+                <div class="logo-ro">
+                    <img src="{{ url_for('static', filename='LOGOSQI.jpg') }}" alt="SQ||||| R.O" class="logo-img" style="width: 120px; height: 120px; object-fit: contain;">
+                </div>
+            </div>
+        </div>
+
+        <div class="title-section">
+            <h1 class="main-title">Relatório de Ocorrência – R.O</h1>
+            <div class="subtitle">REGISTRO DE OCORRÊNCIAS</div>
+            <div class="form-code">FQ – 003</div>
+            <div class="ro-number" style="font-size: 16px; font-weight: bold; color: #6c757d; margin-top: 10px;">R.O Nº: {{ ro.ro_number or ro.id }}</div>
+        </div>
+
+        <!-- ============================================ -->
+        <!-- SEÇÃO: INFORMAÇÕES BÁSICAS -->
+        <!-- ============================================ -->
+        <div style="margin: 25px 0; border: 1px solid #6c757d; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(108, 117, 125, 0.15);">
+            <!-- Cabeçalho da Seção -->
+            <div style="background: linear-gradient(135deg, #6c757d 0%, #495057 100%); color: white; padding: 12px 20px; font-weight: bold; font-size: 15px; text-align: center; letter-spacing: 1px;">
+                 INFORMAÇÕES BÁSICAS
+            </div>
+
+            <!-- Conteúdo -->
+            <div style="padding: 20px; background: white;">
+                <!-- Linha 1: TÍTULO -->
+                <table style="margin-bottom: 0;">
+                    <tr>
+                        <td class="field-label" style="width: 100%;">TÍTULO</td>
+                    </tr>
+                    <tr>
+                        <td class="field-value">{{ ro.title or '(Sem título)' }}</td>
+                    </tr>
+                </table>
+
+                <!-- Linha 2: CLIENTE | EQUIPAMENTO -->
+                <table style="margin-bottom: 0;">
+                    <tr>
+                        <td class="field-label" style="width: 50%;">CLIENTE</td>
+                        <td class="field-label" style="width: 50%;">EQUIPAMENTO</td>
+                    </tr>
+                    <tr>
+                        <td class="field-value">{{ ro.client or '(Não informado)' }}</td>
+                        <td class="field-value">{{ ro.equipment or '(Não informado)' }}</td>
+                    </tr>
+                </table>
+
+                <!-- Linha 3: PRIORIDADE | STATUS -->
+                <table style="margin-bottom: 0;">
+                    <tr>
+                        <td class="field-label" style="width: 50%;">PRIORIDADE</td>
+                        <td class="field-label" style="width: 50%;">STATUS</td>
+                    </tr>
+                    <tr>
+                        <td class="field-value">
+                            <span style="padding: 4px 12px; border-radius: 12px; font-weight: 600; font-size: 12px; 
+                                {% if ro.priority == 'Alta' %}background: #f8d7da; color: #721c24;
+                                {% elif ro.priority == 'Média' %}background: #fff3cd; color: #856404;
+                                {% else %}background: #d4edda; color: #155724;{% endif %}">
+                                {{ ro.priority or 'Média' }}
+                            </span>
+                        </td>
+                        <td class="field-value">
+                            <span style="padding: 4px 12px; border-radius: 12px; font-weight: 600; font-size: 12px;
+                                {% if ro.status == 'Finalizado' %}background: #d4edda; color: #155724;
+                                {% else %}background: #fff3cd; color: #856404;{% endif %}">
+                                {{ ro.status or 'Pendente' }}
+                            </span>
+                        </td>
+                    </tr>
+                </table>
+
+                <!-- Linha 4: DATA DE CRIAÇÃO | CRIADO POR -->
+                <table style="margin-bottom: 0;">
+                    <tr>
+                        <td class="field-label" style="width: 50%;">DATA DE CRIAÇÃO</td>
+                        <td class="field-label" style="width: 50%;">CRIADO POR</td>
+                    </tr>
+                    <tr>
+                        <td class="field-value">{{ ro.created_at[:19] if ro.created_at else '-' }}</td>
+                        <td class="field-value">{{ ro.creator_name or '(Sistema)' }}</td>
+                    </tr>
+                </table>
+
+                {% if ro.finalized_at %}
+                <!-- Linha 5: DATA DE FINALIZAÇÃO (se finalizado) -->
+                <table style="margin-bottom: 0;">
+                    <tr>
+                        <td class="field-label" style="width: 100%;">DATA DE FINALIZAÇÃO</td>
+                    </tr>
+                    <tr>
+                        <td class="field-value">{{ ro.finalized_at[:19] }}</td>
+                    </tr>
+                </table>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- ============================================ -->
+        <!-- SEÇÃO: DESENHO -->
+        <!-- ============================================ -->
+        <div style="margin: 25px 0; border: 1px solid #6c757d; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(108, 117, 125, 0.15);">
+            <!-- Cabeçalho da Seção -->
+            <div style="background: linear-gradient(135deg, #6c757d 0%, #495057 100%); color: white; padding: 12px 20px; font-weight: bold; font-size: 15px; text-align: center; letter-spacing: 1px;">
+                DESENHO
+            </div>
+
+            <!-- Conteúdo -->
+            <div style="padding: 20px; background: white;">
+                <!-- Linha 1: CLIENTES | NUMERO DE DESENHO | REVISÃO -->
+                <table style="margin-bottom: 0;">
+                    <tr>
+                        <td class="field-label" style="width: 33.33%;">CLIENTES</td>
+                        <td class="field-label" style="width: 33.33%;">NUMERO DE DESENHO</td>
+                        <td class="field-label" style="width: 33.33%;">REVISÃO</td>
+                    </tr>
+                    <tr>
+                        <td class="field-value">{{ ro.client or '(Não informado)' }}</td>
+                        <td class="field-value">{{ ro.drawing_number or '(Não informado)' }}</td>
+                        <td class="field-value">{{ ro.revision or '(Não informado)' }}</td>
+                    </tr>
+                </table>
+
+                <!-- Linha 2: CONJ. | EQUIPAMENTO -->
+                <table style="margin-bottom: 0;">
+                    <tr>
+                        <td class="field-label" style="width: 50%;">CONJ.</td>
+                        <td class="field-label" style="width: 50%;">EQUIPAMENTO</td>
+                    </tr>
+                    <tr>
+                        <td class="field-value">{{ ro.conjunto or '(Não informado)' }}</td>
+                        <td class="field-value">{{ ro.equipment or '(Não informado)' }}</td>
+                    </tr>
+                </table>
+
+                <!-- Linha 3: DESCRIÇÃO DO DESENHO -->
+                <table style="margin-bottom: 0;">
+                    <tr>
+                        <td class="field-label" style="width: 100%;">DESCRIÇÃO DO DESENHO</td>
+                    </tr>
+                    <tr>
+                        <td class="field-value">{{ ro.description_drawing or '(Não informado)' }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- ============================================ -->
+        <!-- SEÇÃO: COMPLEMENTARES -->
+        <!-- ============================================ -->
+        <div style="margin: 25px 0; border: 1px solid #6c757d; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(108, 117, 125, 0.15);">
+            <!-- Cabeçalho da Seção -->
+            <div style="background: linear-gradient(135deg, #6c757d 0%, #495057 100%); color: white; padding: 12px 20px; font-weight: bold; font-size: 15px; text-align: center; letter-spacing: 1px;">
+                COMPLEMENTARES
+            </div>
+
+            <!-- Conteúdo -->
+            <div style="padding: 20px; background: white;">
+                <!-- Linha 1: POSIÇÃO | MODELO | MATERIAL | QUANTIDADE -->
+                <table style="margin-bottom: 0;">
+                    <tr>
+                        <td class="field-label" style="width: 25%;">POSIÇÃO</td>
+                        <td class="field-label" style="width: 25%;">MODELO</td>
+                        <td class="field-label" style="width: 25%;">MATERIAL</td>
+                        <td class="field-label" style="width: 25%;">QUANTIDADE</td>
+                    </tr>
+                    <tr>
+                        <td class="field-value">{{ ro.position or '(Não informado)' }}</td>
+                        <td class="field-value">{{ ro.modelo or '(Não informado)' }}</td>
+                        <td class="field-value">{{ ro.material or '(Não informado)' }}</td>
+                        <td class="field-value">{{ ro.quantity or '(Não informado)' }}</td>
+                    </tr>
+                </table>
+
+                <!-- Linha 2: CV | MP -->
+                <table style="margin-bottom: 0;">
+                    <tr>
+                        <td class="field-label" style="width: 50%;">CV</td>
+                        <td class="field-label" style="width: 50%;">MP</td>
+                    </tr>
+                    <tr>
+                        <td class="field-value">{{ ro.cv or '(Não informado)' }}</td>
+                        <td class="field-value">{{ ro.mp or '(Não informado)' }}</td>
+                    </tr>
+                </table>
+
+                <!-- Linha 3: VALOR TOTAL | OBSERVAÇÃO -->
+                <table style="margin-bottom: 0;">
+                    <tr>
+                        <td class="field-label" style="width: 50%;">VALOR TOTAL (R$)</td>
+                        <td class="field-label" style="width: 50%;">OBSERVAÇÃO</td>
+                    </tr>
+                    <tr>
+                        <td class="field-value">{{ ro.price or '(Não informado)' }}</td>
+                        <td class="field-value">{{ ro.price_note or '(Não informado)' }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- ============================================ -->
+        <!-- SEÇÃO: ASSINATURAS CABEÇALHO -->
+        <!-- ============================================ -->
+        <div style="margin: 25px 0; border: 1px solid #6c757d; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(108, 117, 125, 0.15);">
+            <!-- Cabeçalho da Seção -->
+            <div style="background: linear-gradient(135deg, #6c757d 0%, #495057 100%); color: white; padding: 12px 20px; font-weight: bold; font-size: 15px; text-align: center; letter-spacing: 1px;">
+                ASSINATURAS CABEÇALHO
+            </div>
+
+            <!-- Conteúdo -->
+            <div style="padding: 20px; background: white;">
+                <!-- Linha 1: SETOR RESPONSÁVEL | ASSINATURA RESPONSÁVEL | DATA -->
+                <table style="margin-bottom: 0;">
+                    <tr>
+                        <td class="field-label" style="width: 33.33%;">SETOR RESPONSÁVEL</td>
+                        <td class="field-label" style="width: 33.33%;">ASSINATURA RESPONSÁVEL</td>
+                        <td class="field-label" style="width: 33.33%;">DATA</td>
+                    </tr>
+                    <tr>
+                        <td class="field-value">{{ ro.area_responsavel_name or ro.area_responsavel or '(Não informado)' }}</td>
+                        <td class="field-value">{{ ro.ass_responsavel or '(Não informado)' }}</td>
+                        <td class="field-value">{{ ro.created_at[:10] if ro.created_at else '(Não informado)' }}</td>
+                    </tr>
+                </table>
+
+                <!-- Linha 2: INSPETOR -->
+                <table style="margin-bottom: 0;">
+                    <tr>
+                        <td class="field-label" style="width: 100%;">INSPETOR</td>
+                    </tr>
+                    <tr>
+                        <td class="field-value">{{ ro.inspetor or '(Não informado)' }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- DESCRIÇÃO DA OCORRÊNCIA -->
+        <table>
+            <tr>
+                <td class="section-title">DESCRIÇÃO DA OCORRÊNCIA</td>
+            </tr>
+            <tr>
+                <td class="section-content section-content-large" style="white-space: pre-wrap; word-wrap: break-word;">{{ ro.description or '(Sem descrição)' }}</td>
+            </tr>
+        </table>
+
+        <!-- CAUSA DA R.O -->
+        <table>
+            <tr>
+                <td class="section-title">CAUSA DA R.O</td>
+            </tr>
+            <tr>
+                <td class="section-content section-content-large" style="white-space: pre-wrap; word-wrap: break-word;">{{ ro.cause_ro or '(Não informada)' }}</td>
+            </tr>
+        </table>
+
+        <!-- INSTRUÇÃO PARA RETRABALHO -->
+        <table>
+            <tr>
+                <td class="section-title">INSTRUÇÃO PARA RETRABALHO</td>
+            </tr>
+            <tr>
+                <td class="section-content section-content-large" style="white-space: pre-wrap; word-wrap: break-word;">{{ ro.instruction_retrabalho or '(Não informada)' }}</td>
+            </tr>
+        </table>
+    </div>
+
+    <script>
+        // Função para responder R.O
+        function responderRO() {
+            const roId = {{ ro.id }};
+            const roNumber = '{{ ro.ro_number }}';
+            
+            if (confirm(`Deseja responder o R.O ${roNumber}?`)) {
+                window.location.href = `/ro/${roId}/responder`;
+            }
+        }
+
+        // Adicionar efeitos de hover e interação
+        document.addEventListener('DOMContentLoaded', function() {
+            // Adicionar loading state aos botões
+            document.querySelectorAll('.btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    if (!this.classList.contains('btn-outline')) {
+                        this.classList.add('loading');
+                        setTimeout(() => {
+                            this.classList.remove('loading');
+                        }, 1000);
+                    }
+                });
+            });
+
+            // Melhorar experiência de impressão
+            window.addEventListener('beforeprint', function() {
+                document.body.classList.add('printing');
+            });
+
+            window.addEventListener('afterprint', function() {
+                document.body.classList.remove('printing');
+            });
+        });
+    </script>
+</body>
+</html>

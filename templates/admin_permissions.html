@@ -12,86 +12,97 @@
         }
 
         body {
-            font-family: 'Poppins', 'Inter', system-ui, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #f5f7fa;
             min-height: 100vh;
-            padding: 20px;
+            padding: 24px 20px 32px;
+            color: #263238;
         }
 
         .container {
             max-width: 1400px;
             margin: 0 auto;
-            background: white;
-            border-radius: 15px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-            overflow: hidden;
         }
 
         .header {
-            background: linear-gradient(135deg, #8b1538 0%, #a52a2a 100%);
-            color: white;
-            padding: 30px;
-            text-align: center;
-            position: relative;
+            background: #fff;
+            color: #263238;
+            padding: 18px 20px;
+            border: 1px solid #d7dde5;
+            border-radius: 8px;
+            box-shadow: 0 8px 18px rgba(38, 50, 56, 0.08);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .header-left {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
         }
 
         .header h1 {
-            font-size: 2.5rem;
+            font-size: 22px;
             font-weight: 700;
-            margin-bottom: 10px;
+            letter-spacing: 0.5px;
         }
 
         .header p {
-            font-size: 1.1rem;
-            opacity: 0.9;
+            font-size: 13px;
+            color: #607d8b;
         }
 
         .back-btn {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            background: rgba(255,255,255,0.2);
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 8px;
+            background: #fff;
+            color: #455a64;
+            border: 1px solid #cfd8dc;
+            padding: 8px 12px;
+            border-radius: 4px;
             cursor: pointer;
             font-weight: 600;
-            transition: all 0.3s ease;
+            transition: all 0.18s ease;
+            box-shadow: 0 4px 10px rgba(38, 50, 56, 0.06);
         }
 
         .back-btn:hover {
-            background: rgba(255,255,255,0.3);
+            border-color: #b0bec5;
+            transform: translateY(-1px);
         }
 
         .content {
-            padding: 30px;
+            padding: 0;
         }
 
         .tabs {
             display: flex;
-            margin-bottom: 30px;
-            border-bottom: 2px solid #e9ecef;
+            margin-bottom: 16px;
+            border-bottom: 2px solid #e0e6ed;
+            gap: 6px;
         }
 
         .tab {
             background: none;
             border: none;
-            padding: 15px 25px;
+            padding: 12px 16px;
             cursor: pointer;
-            font-weight: 600;
-            color: #6c757d;
-            border-bottom: 3px solid transparent;
-            transition: all 0.3s ease;
+            font-weight: 700;
+            color: #78909c;
+            border-bottom: 2px solid transparent;
+            transition: all 0.18s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            font-size: 12px;
         }
 
         .tab.active {
-            color: #8b1538;
-            border-bottom-color: #8b1538;
+            color: #c0392b;
+            border-bottom-color: #c0392b;
         }
 
         .tab:hover {
-            color: #8b1538;
+            color: #455a64;
         }
 
         .tab-content {
@@ -103,20 +114,24 @@
         }
 
         .section {
-            margin-bottom: 40px;
-            background: #f8f9fa;
-            border-radius: 10px;
-            padding: 25px;
-            border: 1px solid #e9ecef;
+            margin-bottom: 16px;
+            background: #fff;
+            border-radius: 8px;
+            padding: 18px;
+            border: 1px solid #d7dde5;
+            box-shadow: 0 6px 14px rgba(38, 50, 56, 0.06);
         }
 
         .section h2 {
-            color: #8b1538;
-            font-size: 1.5rem;
-            margin-bottom: 20px;
+            color: #263238;
+            font-size: 14px;
+            margin-bottom: 14px;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            font-weight: 700;
         }
 
         .group-selector {
@@ -125,43 +140,46 @@
 
         .group-selector select {
             width: 100%;
-            padding: 12px;
-            border: 2px solid #e9ecef;
-            border-radius: 8px;
-            font-size: 1rem;
-            background: white;
+            padding: 11px 12px;
+            border: 1px solid #cfd8dc;
+            border-radius: 4px;
+            font-size: 14px;
+            background: #fff;
+            color: #263238;
         }
 
         .permissions-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 20px;
-            margin-top: 20px;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 14px;
+            margin-top: 10px;
         }
 
         .permission-category {
-            background: white;
-            border-radius: 10px;
-            padding: 20px;
-            border: 1px solid #e9ecef;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            background: #fff;
+            border-radius: 8px;
+            padding: 16px;
+            border: 1px solid #d7dde5;
+            box-shadow: 0 6px 14px rgba(38, 50, 56, 0.06);
         }
 
         .category-title {
-            font-size: 1.2rem;
+            font-size: 13px;
             font-weight: 700;
-            color: #8b1538;
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid #e9ecef;
+            color: #263238;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #e0e6ed;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
         }
 
         .permission-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 10px 0;
-            border-bottom: 1px solid #f8f9fa;
+            padding: 9px 0;
+            border-bottom: 1px solid #f2f4f7;
         }
 
         .permission-item:last-child {
@@ -169,21 +187,22 @@
         }
 
         .permission-name {
-            font-weight: 600;
-            color: #495057;
+            font-weight: 700;
+            color: #263238;
+            font-size: 13px;
         }
 
         .permission-description {
-            font-size: 0.9rem;
-            color: #6c757d;
+            font-size: 12px;
+            color: #607d8b;
             margin-top: 2px;
         }
 
         .permission-toggle {
             position: relative;
             display: inline-block;
-            width: 50px;
-            height: 24px;
+            width: 44px;
+            height: 22px;
         }
 
         .permission-toggle input {
@@ -199,68 +218,87 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background-color: #ccc;
-            transition: .4s;
-            border-radius: 24px;
+            background-color: #cfd8dc;
+            transition: .2s;
+            border-radius: 20px;
         }
 
         .slider:before {
             position: absolute;
             content: "";
-            height: 18px;
-            width: 18px;
+            height: 16px;
+            width: 16px;
             left: 3px;
             bottom: 3px;
-            background-color: white;
-            transition: .4s;
+            background-color: #fff;
+            transition: .2s;
             border-radius: 50%;
+            box-shadow: 0 1px 2px rgba(38, 50, 56, 0.2);
         }
 
         input:checked + .slider {
-            background-color: #28a745;
+            background-color: #455a64;
         }
 
         input:checked + .slider:before {
-            transform: translateX(26px);
+            transform: translateX(22px);
         }
 
         .btn {
-            background: linear-gradient(135deg, #8b1538 0%, #a52a2a 100%);
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
+            background: #455a64;
+            color: #fff;
+            border: 1px solid #455a64;
+            padding: 10px 16px;
+            border-radius: 4px;
             cursor: pointer;
             font-weight: 600;
-            transition: all 0.3s ease;
-            margin: 5px;
+            font-size: 13px;
+            transition: all 0.18s ease;
+            margin: 4px 4px 0 0;
+            box-shadow: 0 6px 12px rgba(69, 90, 100, 0.16);
         }
 
         .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(139, 21, 56, 0.3);
+            background: #37474f;
+            border-color: #37474f;
+            box-shadow: 0 8px 16px rgba(55, 71, 79, 0.2);
+            transform: translateY(-1px);
         }
 
         .btn-success {
-            background: #28a745;
+            background: #2e7d32;
+            border-color: #2e7d32;
+            box-shadow: 0 6px 12px rgba(46, 125, 50, 0.16);
         }
 
         .btn-warning {
-            background: #ffc107;
-            color: #212529;
+            background: #eceff1;
+            color: #455a64;
+            border: 1px solid #cfd8dc;
+            box-shadow: 0 4px 10px rgba(38, 50, 56, 0.06);
+        }
+
+        .btn-warning:hover {
+            background: #e0e6ed;
+            border-color: #b0bec5;
+            color: #263238;
+            box-shadow: 0 6px 12px rgba(38, 50, 56, 0.08);
         }
 
         .notification {
             position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 15px 25px;
-            border-radius: 8px;
-            color: white;
-            font-weight: 600;
+            top: 18px;
+            right: 18px;
+            padding: 12px 18px;
+            border-radius: 6px;
+            color: #263238;
+            font-weight: 700;
             z-index: 1001;
-            transform: translateX(400px);
-            transition: transform 0.3s ease;
+            transform: translateX(360px);
+            transition: transform 0.22s ease;
+            border: 1px solid #d7dde5;
+            box-shadow: 0 8px 18px rgba(38, 50, 56, 0.12);
+            background: #fff;
         }
 
         .notification.show {
@@ -268,123 +306,142 @@
         }
 
         .notification.success {
-            background: #28a745;
+            border-color: #c8e6c9;
+            background: #e8f5e9;
+            color: #2e7d32;
         }
 
         .notification.error {
-            background: #dc3545;
+            border-color: #f5c6cb;
+            background: #fdecea;
+            color: #b71c1c;
         }
 
         .loading {
             text-align: center;
-            padding: 40px;
-            color: #6c757d;
+            padding: 32px;
+            color: #607d8b;
         }
 
         .empty-state {
             text-align: center;
-            padding: 60px 20px;
-            color: #6c757d;
+            padding: 36px 16px;
+            color: #607d8b;
         }
 
         .bulk-actions {
-            margin-bottom: 20px;
-            padding: 15px;
-            background: #e3f2fd;
-            border-radius: 8px;
-            border: 1px solid #bbdefb;
+            margin-bottom: 14px;
+            padding: 14px;
+            background: #f9fbfd;
+            border-radius: 6px;
+            border: 1px solid #e0e6ed;
         }
 
         .group-stats {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
         }
 
         .stat-card {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            border: 1px solid #e9ecef;
+            background: #fff;
+            padding: 14px;
+            border-radius: 6px;
+            border: 1px solid #d7dde5;
             text-align: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            box-shadow: 0 6px 14px rgba(38, 50, 56, 0.06);
         }
 
         .stat-number {
-            font-size: 2rem;
+            font-size: 1.4rem;
             font-weight: 700;
-            color: #8b1538;
+            color: #263238;
         }
 
         .stat-label {
-            color: #6c757d;
+            color: #607d8b;
             font-weight: 600;
-            margin-top: 5px;
+            margin-top: 4px;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
         }
 
         .comparison-table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 20px;
-            background: white;
-            border-radius: 10px;
+            margin-top: 14px;
+            background: #fff;
+            border-radius: 8px;
             overflow: hidden;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            box-shadow: 0 6px 14px rgba(38, 50, 56, 0.06);
+            border: 1px solid #d7dde5;
         }
 
         .comparison-table th,
         .comparison-table td {
-            padding: 15px;
+            padding: 12px;
             text-align: left;
-            border-bottom: 1px solid #e9ecef;
+            border-bottom: 1px solid #e0e6ed;
+            font-size: 13px;
         }
 
         .comparison-table th {
-            background: #f8f9fa;
+            background: #f5f7fa;
             font-weight: 700;
-            color: #495057;
+            color: #455a64;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            font-size: 12px;
         }
 
         .permission-status {
             display: inline-block;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            border: 1px solid transparent;
         }
 
         .permission-status.granted {
-            background: #d4edda;
-            color: #155724;
+            background: #e8f5e9;
+            color: #2e7d32;
+            border-color: #c8e6c9;
         }
 
         .permission-status.denied {
-            background: #f8d7da;
-            color: #721c24;
+            background: #fdecea;
+            color: #b71c1c;
+            border-color: #f5c6cb;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <button class="back-btn" onclick="window.location.href='/admin/groups'">← Voltar para Grupos</button>
-            <h1>🔐 Gerenciar Permissões</h1>
-            <p>Configure permissões detalhadas para cada grupo de usuários</p>
+            <div class="header-left">
+                <h1>Gerenciar Permissões</h1>
+                <p>Configure permissões detalhadas para cada grupo de usuários</p>
+            </div>
+            <button class="back-btn" onclick="window.location.href='/admin/groups'">Voltar para Grupos</button>
         </div>
 
         <div class="content">
             <!-- Tabs de navegação -->
             <div class="tabs">
-                <button class="tab active" onclick="switchTab('group-permissions')">👥 Permissões por Grupo</button>
-                <button class="tab" onclick="switchTab('comparison')">📊 Comparar Grupos</button>
-                <button class="tab" onclick="switchTab('bulk-actions')">⚡ Ações em Lote</button>
+                <button class="tab active" onclick="switchTab('group-permissions')">Permissões por Grupo</button>
+                <button class="tab" onclick="switchTab('comparison')">Comparar Grupos</button>
+                <button class="tab" onclick="switchTab('bulk-actions')">Ações em Lote</button>
             </div>
 
             <!-- Tab: Permissões por Grupo -->
             <div id="group-permissions" class="tab-content active">
                 <div class="section">
-                    <h2>👥 Configurar Permissões do Grupo</h2>
+                    <h2>Configurar Permissões do Grupo</h2>
                     
                     <div class="group-selector">
                         <label for="groupSelect">Selecionar Grupo:</label>
@@ -424,7 +481,7 @@
             <!-- Tab: Comparação entre Grupos -->
             <div id="comparison" class="tab-content">
                 <div class="section">
-                    <h2>📊 Comparar Permissões entre Grupos</h2>
+                    <h2>Comparar Permissões entre Grupos</h2>
                     
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
                         <div>
@@ -441,7 +498,7 @@
                         </div>
                     </div>
 
-                    <button class="btn" onclick="compareGroups()">🔍 Comparar Grupos</button>
+                    <button class="btn" onclick="compareGroups()">Comparar Grupos</button>
 
                     <div id="comparisonResult"></div>
                 </div>
@@ -450,10 +507,10 @@
             <!-- Tab: Ações em Lote -->
             <div id="bulk-actions" class="tab-content">
                 <div class="section">
-                    <h2>⚡ Ações em Lote</h2>
+                    <h2>Ações em Lote</h2>
                     
                     <div class="bulk-actions">
-                        <h3>🎯 Aplicar Template de Permissões</h3>
+                        <h3>Aplicar Template de Permissões</h3>
                         <p>Aplique rapidamente um conjunto predefinido de permissões a um grupo</p>
                         
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 15px 0;">
@@ -471,15 +528,15 @@
                             </div>
                         </div>
                         
-                        <button class="btn btn-warning" onclick="copyPermissions()">📋 Copiar Permissões</button>
+                        <button class="btn btn-warning" onclick="copyPermissions()">Copiar Permissões</button>
                     </div>
 
                     <div class="bulk-actions">
-                        <h3>🧹 Operações de Limpeza</h3>
+                        <h3>Operações de Limpeza</h3>
                         <p>Operações avançadas para gerenciar permissões</p>
                         
-                        <button class="btn" onclick="resetGroupPermissions()">🔄 Resetar Todas as Permissões</button>
-                        <button class="btn btn-warning" onclick="applyDefaultPermissions()">⚙️ Aplicar Permissões Padrão</button>
+                        <button class="btn" onclick="resetGroupPermissions()">Resetar Todas as Permissões</button>
+                        <button class="btn btn-warning" onclick="applyDefaultPermissions()">Aplicar Permissões Padrão</button>
                     </div>
                 </div>
             </div>
@@ -521,53 +578,53 @@
         // Função para carregar dados iniciais
         async function loadInitialData() {
             try {
-                console.log('🚀 Iniciando carregamento de dados...');
+                console.log('Iniciando carregamento de dados...');
                 
                 // Carregar grupos
-                console.log('📋 Carregando grupos...');
+                console.log('Carregando grupos...');
                 const groupsResponse = await fetch('/api/admin/groups');
                 const groupsData = await groupsResponse.json();
-                console.log('📋 Resposta grupos:', groupsData);
+                console.log('Resposta grupos:', groupsData);
                 
                 if (groupsData.success) {
                     allGroups = groupsData.groups;
-                    console.log(`✅ ${allGroups.length} grupos carregados`);
+                    console.log(`${allGroups.length} grupos carregados`);
                     populateGroupSelects();
                 } else {
-                    console.error('❌ Erro ao carregar grupos:', groupsData);
+                    console.error('Erro ao carregar grupos:', groupsData);
                     showNotification('Erro ao carregar grupos: ' + (groupsData.error || groupsData.message || 'erro desconhecido'), 'error');
                 }
 
                 // Carregar todas as permissões
-                console.log('🔐 Carregando permissões...');
+                console.log('Carregando permissões...');
                 const permissionsResponse = await fetch('/api/admin/permissions/list');
                 const permissionsData = await permissionsResponse.json();
-                console.log('🔐 Resposta permissions/list:', permissionsData);
+                console.log('Resposta permissions/list:', permissionsData);
                 
                 if (permissionsData.success) {
                     allPermissions = permissionsData.permissions;
-                    console.log(`✅ ${allPermissions.length} permissões carregadas`);
+                    console.log(`${allPermissions.length} permissões carregadas`);
                 } else {
-                    console.error('❌ Erro ao carregar permissões:', permissionsData);
+                    console.error('Erro ao carregar permissões:', permissionsData);
                     showNotification('Erro ao carregar permissões: ' + (permissionsData.error || permissionsData.message || 'erro desconhecido'), 'error');
                 }
                 
-                console.log('✅ Carregamento de dados concluído!');
+                console.log('Carregamento de dados concluído.');
             } catch (error) {
-                console.error('❌ Erro ao carregar dados:', error);
+                console.error('Erro ao carregar dados:', error);
                 showNotification('Erro ao carregar dados iniciais', 'error');
             }
         }
 
         // Função para popular selects de grupos
         function populateGroupSelects() {
-            console.log('🔧 Populando selects de grupos...');
+            console.log('Populando selects de grupos...');
             const selects = ['groupSelect', 'compareGroup1', 'compareGroup2', 'targetGroup', 'templateGroup'];
             
             selects.forEach(selectId => {
                 const select = document.getElementById(selectId);
                 if (select) {
-                    console.log(`✅ Select ${selectId} encontrado`);
+                    console.log(`Select ${selectId} encontrado`);
                     select.innerHTML = '<option value="">Selecione um grupo...</option>';
                     
                     allGroups.forEach(group => {
@@ -576,19 +633,19 @@
                         option.textContent = `${group.name} (${group.user_count} usuários)`;
                         select.appendChild(option);
                     });
-                    console.log(`✅ Select ${selectId} populado com ${allGroups.length} grupos`);
+                    console.log(`Select ${selectId} populado com ${allGroups.length} grupos`);
                 } else {
-                    console.error(`❌ Select ${selectId} NÃO encontrado!`);
+                    console.error(`Select ${selectId} nao encontrado.`);
                 }
             });
         }
 
         // Função para carregar permissões de um grupo
         async function loadGroupPermissions(groupId) {
-            console.log(`🔍 Carregando permissões do grupo ${groupId}...`);
+            console.log(`Carregando permissoes do grupo ${groupId}...`);
             
             if (!groupId) {
-                console.log('⚠️ Nenhum grupo selecionado');
+                console.log('Nenhum grupo selecionado');
                 const container = document.getElementById('permissionsContainer');
                 const stats = document.getElementById('groupStats');
                 
@@ -600,34 +657,34 @@
                         </div>
                     `;
                 } else {
-                    console.error('❌ Elemento permissionsContainer não encontrado!');
+                    console.error('Elemento permissionsContainer nao encontrado.');
                 }
                 
                 if (stats) {
                     stats.style.display = 'none';
                 } else {
-                    console.error('❌ Elemento groupStats não encontrado!');
+                    console.error('Elemento groupStats nao encontrado.');
                 }
                 return;
             }
 
             try {
-                console.log(`📡 Fazendo requisição para /api/admin/groups/${groupId}/permissions`);
+                console.log(`Fazendo requisicao para /api/admin/groups/${groupId}/permissions`);
                 const response = await fetch(`/api/admin/groups/${groupId}/permissions`);
                 const data = await response.json();
-                console.log(`📡 Resposta da API:`, data);
+                console.log('Resposta da API:', data);
                 
                 if (data.success) {
                     currentGroupPermissions = data.permissions;
-                    console.log(`✅ ${currentGroupPermissions.length} permissões carregadas para o grupo ${groupId}`);
+                    console.log(`${currentGroupPermissions.length} permissoes carregadas para o grupo ${groupId}`);
                     displayGroupPermissions(groupId);
                     updateGroupStats(groupId);
                 } else {
-                    console.error('❌ Falha ao obter permissões do grupo:', data);
+                    console.error('Falha ao obter permissoes do grupo:', data);
                     showNotification('Erro ao carregar permissões: ' + (data.error || data.message || 'erro desconhecido'), 'error');
                 }
             } catch (error) {
-                console.error('❌ Erro ao carregar permissões:', error);
+                console.error('Erro ao carregar permissoes:', error);
                 showNotification('Erro ao carregar permissões', 'error');
             }
         }
@@ -666,9 +723,9 @@
             
             html += '</div>';
             
-            html += `
+                html += `
                 <div style="margin-top: 30px; text-align: center;">
-                    <button class="btn btn-success" onclick="saveAllPermissions(${groupId})">💾 Salvar Todas as Alterações</button>
+                    <button class="btn btn-success" onclick="saveAllPermissions(${groupId})">Salvar Todas as Alteracoes</button>
                 </div>
             `;
             
@@ -742,7 +799,7 @@
         // Função para salvar todas as permissões
         async function saveAllPermissions(groupId) {
             try {
-                console.log('➡️ Enviando permissões para salvar:', currentGroupPermissions);
+                console.log('Enviando permissoes para salvar:', currentGroupPermissions);
                 const response = await fetch(`/api/admin/groups/${groupId}/permissions`, {
                     method: 'PUT',
                     headers: {
@@ -758,7 +815,7 @@
                 if (data.success) {
                     showNotification('Permissões salvas com sucesso!', 'success');
                 } else {
-                    console.error('❌ Falha ao salvar permissões:', data);
+                    console.error('Falha ao salvar permissoes:', data);
                     showNotification('Erro ao salvar permissões: ' + (data.error || data.message || 'erro desconhecido'), 'error');
                 }
             } catch (error) {

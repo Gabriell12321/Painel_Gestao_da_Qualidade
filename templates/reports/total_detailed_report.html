@@ -174,6 +174,34 @@
             font-weight: bold;
         }
         
+        .status-badge-detail {
+            display: inline-block;
+            background: #e9ecef;
+            color: #495057;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 9px;
+            font-weight: 600;
+            margin: 2px 0;
+            border: 1px solid #dee2e6;
+        }
+        
+        .status-badge-causa {
+            border-left: 3px solid #17a2b8;
+        }
+        
+        .status-badge-acao {
+            border-left: 3px solid #6f42c1;
+        }
+        
+        .status-badge-valor {
+            border-left: 3px solid #fd7e14;
+        }
+        
+        .status-badge-assinatura {
+            border-left: 3px solid #e83e8c;
+        }
+        
         .status-cancelled {
             background: #dc3545;
             color: white;
@@ -270,7 +298,7 @@
     <button class="back-button no-print" onclick="window.location.href='/reports/menu'">📊 Novo Relatório</button>
     
     <div class="header">
-        <img src="/IPPELLOGO.jpg" alt="IPPEL Logo" class="logo">
+        <img src="/static/IPPELLOGO.jpg" alt="IPPEL Logo" class="logo">
         <h1 class="title">Relatório Total Detalhado</h1>
         <p class="subtitle">Sistema de Relatórios de Não Conformidade</p>
         <p class="subtitle">IPPEL - Indústria de Produtos Plásticos</p>
@@ -279,6 +307,16 @@
     <div class="generated-info">
         <p>Gerado em: {{ generated_at.strftime('%d/%m/%Y às %H:%M') }}</p>
         <p>Período: {{ start_date }} a {{ end_date }}</p>
+        {% if setor_filter and setor_filter != 'todos' %}
+        <p>Setor: {{ setor_filter }}</p>
+        {% endif %}
+        {% if valor_min or valor_max %}
+        <p>Valor: 
+            {% if valor_min %}R$ {{ valor_min }}{% else %}R$ 0{% endif %}
+            até 
+            {% if valor_max %}R$ {{ valor_max }}{% else %}sem limite{% endif %}
+        </p>
+        {% endif %}
         <p>Total de RNCs: {{ stats.total_rncs }}</p>
     </div>
     
@@ -297,13 +335,8 @@
             </div>
             
             <div class="stat-card">
-                <div class="stat-number">{{ stats.by_department|length }}</div>
+                <div class="stat-number">{{ stats.num_departments or stats.by_department|length }}</div>
                 <div class="stat-label">Departamentos</div>
-            </div>
-            
-            <div class="stat-card">
-                <div class="stat-number">{{ stats.by_priority|length }}</div>
-                <div class="stat-label">Níveis de Prioridade</div>
             </div>
         </div>
         
@@ -313,17 +346,6 @@
             {% for status, count in stats.by_status.items() %}
             <li style="display: inline-block; margin: 5px 10px; padding: 5px 10px; background: #e9ecef; border-radius: 3px;">
                 <strong>{{ status or 'Não informado' }}</strong>: {{ count }} RNCs
-            </li>
-            {% endfor %}
-        </ul>
-        {% endif %}
-        
-        {% if stats.by_priority %}
-        <h3>Por Prioridade:</h3>
-        <ul style="list-style: none; padding: 0;">
-            {% for priority, count in stats.by_priority.items() %}
-            <li style="display: inline-block; margin: 5px 10px; padding: 5px 10px; background: #e9ecef; border-radius: 3px;">
-                <strong>{{ priority or 'Não informado' }}</strong>: {{ count }} RNCs
             </li>
             {% endfor %}
         </ul>
@@ -352,47 +374,78 @@
                 <th>Cliente</th>
                 <th>Equipamento</th>
                 <th>Status</th>
-                <th>Prioridade</th>
-                <th>Departamento</th>
-                <th>Criado por</th>
-                <th>Data Criação</th>
+                <th>Setor Responsável</th>
+                <th>Causador</th>
+                <th>Data</th>
                 <th>Valor (R$)</th>
             </tr>
         </thead>
         <tbody>
             {% for rnc in rncs %}
             <tr>
-                <td><strong>{{ rnc.rnc_number or rnc.id }}</strong></td>
+                <td><strong>{{ rnc.rnc_number.replace('RNC-', '') if rnc.rnc_number else rnc.id }}</strong></td>
                 <td>{{ rnc.title or 'Sem título' }}</td>
                 <td>{{ rnc.client or 'Não informado' }}</td>
                 <td>{{ rnc.equipment or 'Não informado' }}</td>
                 <td>
                     {% if rnc.status == 'Finalizado' %}
                         <span class="status-finalized">FINALIZADO</span>
-                    {% elif rnc.status == 'Pendente' %}
-                        <span class="status-pending">PENDENTE</span>
                     {% elif rnc.status == 'Cancelado' %}
                         <span class="status-cancelled">CANCELADO</span>
                     {% else %}
-                        <span class="status-pending">{{ rnc.status or 'N/A' }}</span>
+                        <span class="status-pending">PENDENTE</span>
+                        <div style="display: flex; flex-direction: column; margin-top: 4px;">
+                        {# Verificar Causa #}
+                        {% set causa = rnc.cause_rnc or rnc.causa or '' %}
+                        {% if not causa or causa.strip() == '' or causa == 'null' or causa == 'N/A' %}
+                            <span class="status-badge-detail status-badge-causa">Aguardando Causa</span>
+                        {% endif %}
+                        
+                        {# Verificar Ação Corretiva #}
+                        {% set acao = rnc.action_rnc or rnc.acao or '' %}
+                        {% if not acao or acao.strip() == '' or acao == 'null' or acao == 'N/A' %}
+                            <span class="status-badge-detail status-badge-acao">Aguardando Ação</span>
+                        {% endif %}
+                        
+                        {# Verificar Valor #}
+                        {% set valor = rnc.price or rnc.valor_total or 0 %}
+                        {% if not valor or valor == 0 or valor == '0' or valor == '0.00' or valor == 0.0 %}
+                            <span class="status-badge-detail status-badge-valor">Aguardando Valor</span>
+                        {% endif %}
+                        
+                        {# Verificar Assinaturas #}
+                        {% set ass_qualidade = rnc.signature_inspection_name or '' %}
+                        {% set ass_gerente = rnc.signature_engineering_name or '' %}
+                        {% set ass_causador = rnc.signature_inspection2_name or '' %}
+                        {% if not ass_qualidade or ass_qualidade.strip() == '' %}
+                            <span class="status-badge-detail status-badge-assinatura">Aguardando Visto Qualidade</span>
+                        {% endif %}
+                        {% if not ass_gerente or ass_gerente.strip() == '' %}
+                            <span class="status-badge-detail status-badge-assinatura">Aguardando Visto Gerente</span>
+                        {% endif %}
+                        {% if not ass_causador or ass_causador.strip() == '' %}
+                            <span class="status-badge-detail status-badge-assinatura">Aguardando Visto Causador</span>
+                        {% endif %}
+                        </div>
                     {% endif %}
                 </td>
                 <td>
-                    {% if rnc.priority == 'Alta' %}
-                        <span class="priority-high">ALTA</span>
-                    {% elif rnc.priority == 'Média' %}
-                        <span class="priority-medium">MÉDIA</span>
-                    {% elif rnc.priority == 'Baixa' %}
-                        <span class="priority-low">BAIXA</span>
+                    <span class="department-badge">
+                        {{ rnc.setor_responsavel or 'Não informado' }}
+                    </span>
+                </td>
+                <td>{{ rnc.causador_nome or 'Não informado' }}</td>
+                <td>
+                    {% if rnc.data_setor_responsavel and rnc.data_setor_responsavel != '//' and rnc.data_setor_responsavel.strip() %}
+                        {{ rnc.data_setor_responsavel }}
+                    {% elif rnc.signature_inspection_date and rnc.signature_inspection_date != '//' and rnc.signature_inspection_date.strip() %}
+                        {{ rnc.signature_inspection_date }}
+                    {% elif rnc.status == 'Finalizado' and rnc.finalized_at %}
+                        {{ rnc.finalized_at.split(' ')[0] }}
                     {% else %}
-                        <span class="priority-medium">{{ rnc.priority or 'N/A' }}</span>
+                        {{ rnc.created_at.split(' ')[0] if rnc.created_at else 'N/A' }}
                     {% endif %}
                 </td>
-                <td>
-                    <span class="department-badge">{{ rnc.creator_department or 'Não informado' }}</span>
-                </td>
-                <td>{{ rnc.creator_name or 'Sistema' }}</td>
-                <td>{{ rnc.created_at.split(' ')[0] if rnc.created_at else 'N/A' }}</td>
                 {# ✅ CORREÇÃO: Usar parse_brl para converter string brasileira antes de formatar #}
                 <td class="price">{{ (rnc.price|parse_brl)|brl }}</td>
             </tr>

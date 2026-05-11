@@ -102,6 +102,12 @@ def login():
                 _sl.sec_log('auth', 'login', ip=request.remote_addr, user_id=user_data[0], email=email, status='success')
             except Exception:
                 pass
+            # Log de auditoria
+            try:
+                from services.audit import log_login
+                log_login(user_data[0], user_data[1], request.remote_addr, request.headers.get('User-Agent'))
+            except Exception:
+                pass
             return resp
         # Log falha de login e aplicar contagem progressiva (se o usuário existir)
         try:
@@ -128,6 +134,14 @@ def login():
 @auth.get('/api/logout')
 def logout():
     try:
+        user_id = session.get('user_id')
+        user_name = session.get('user_name')
+        # Log de auditoria antes de limpar sessão
+        try:
+            from services.audit import log_logout
+            log_logout(user_id, user_name, request.remote_addr)
+        except Exception:
+            pass
         for k in ['user_id','user_name','user_email','user_department','user_role']:
             try: session.pop(k, None)
             except Exception: pass

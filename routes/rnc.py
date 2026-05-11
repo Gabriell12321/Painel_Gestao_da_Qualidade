@@ -3,12 +3,29 @@ import sqlite3
 import json
 import threading
 import time
-from datetime import datetime
-from flask import Blueprint, request, jsonify, render_template, redirect, session, current_app
+from datetime import datetime, timezone, timedelta
+from flask import Blueprint, request, jsonify, render_template, redirect, session, current_app, make_response
+
+# Timezone de Brasília (UTC-3)
+BRASILIA_TZ = timezone(timedelta(hours=-3))
+
+def get_brasilia_now():
+    """Retorna datetime atual no horário de Brasília"""
+    return datetime.now(BRASILIA_TZ)
+
+def get_brasilia_timestamp():
+    """Retorna timestamp formatado no horário de Brasília"""
+    return get_brasilia_now().strftime('%Y-%m-%d %H:%M:%S')
 
 # Local DB path to avoid early circular imports
 DB_PATH = 'ippel_system.db'
 DATABASE_PATH = 'ippel_system.db'  # Alias para compatibilidade
+
+def get_db_connection(timeout=30):
+    """Retorna conexão SQLite com timeout para evitar database locked"""
+    conn = sqlite3.connect(DB_PATH, timeout=timeout)
+    conn.execute('PRAGMA journal_mode=WAL')
+    return conn
 
 rnc = Blueprint('rnc', __name__)
 
@@ -52,7 +69,7 @@ def _ensure_rncs_allows_duplicates(max_attempts: int = 3) -> bool:
         for attempt in range(1, max_attempts + 1):
             conn = None
             try:
-                conn = sqlite3.connect(DB_PATH, timeout=60.0)
+                conn = get_db_connection()
                 conn.execute("PRAGMA journal_mode=WAL")
                 conn.execute("PRAGMA busy_timeout=15000")
                 cur = conn.cursor()
@@ -157,7 +174,7 @@ def _ensure_rncs_allows_duplicates(max_attempts: int = 3) -> bool:
 def get_next_rnc_number():
     """Endpoint para obter o próximo número de RNC disponível"""
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Gerar número sequencial de RNC (começando em 34870)
@@ -254,7 +271,7 @@ def renumber_rnc(rnc_id):
             conn = None
             try:
                 # Conectar com timeout maior e WAL mode
-                conn = sqlite3.connect(DB_PATH, timeout=30.0, isolation_level=None)
+                conn = get_db_connection()
                 conn.execute("PRAGMA journal_mode=WAL")
                 conn.execute("PRAGMA busy_timeout=10000")
                 cursor = conn.cursor()
@@ -309,7 +326,7 @@ def renumber_rnc(rnc_id):
                         }), 500
                     # Tentar novamente a atualização após migração
                     try:
-                        conn = sqlite3.connect(DB_PATH, timeout=30.0, isolation_level=None)
+                        conn = get_db_connection()
                         conn.execute("PRAGMA journal_mode=WAL")
                         conn.execute("PRAGMA busy_timeout=10000")
                         cur2 = conn.cursor()
@@ -432,7 +449,7 @@ def create_rnc():
                     'message': f'Os seguintes campos estão bloqueados para seu grupo: {", ".join(attempted_fields)}'
                 }), 403
 
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("PRAGMA table_info(rncs)")
         cols = {row[1] for row in cursor.fetchall()}
@@ -478,18 +495,14 @@ def create_rnc():
             'signature_engineering_name',
             'signature_inspection2_name'
         }
-        if signature_columns & cols:
-            assinaturas = [
-                data.get('signature_inspection_name', data.get('assinatura1', '')),
-                data.get('signature_engineering_name', data.get('assinatura2', '')),
-                data.get('signature_inspection2_name', data.get('assinatura3', '')),
-            ]
-            if not any(a and a != 'NOME' for a in assinaturas):
-                return jsonify({'success': False, 'message': 'É obrigatório preencher pelo menos uma assinatura!'}), 400
+        # Assinaturas não são mais obrigatórias (VISTO - Gerente do Setor é preenchido automaticamente)
 
         cursor.execute('SELECT department FROM users WHERE id = ?', (session['user_id'],))
         user_dept_row = cursor.fetchone()
         user_department = user_dept_row[0] if user_dept_row else 'N/A'
+
+        # Data/hora atual no horário de Brasília
+        brasilia_now = get_brasilia_timestamp()
 
         values_by_col = {
             'rnc_number': rnc_number,
@@ -502,6 +515,7 @@ def create_rnc():
             'user_id': session['user_id'],
             'assigned_user_id': data.get('assigned_user_id'),
             'department': user_department,
+            'created_at': brasilia_now,  # Usa horário de Brasília
             'signature_inspection_name': data.get('signature_inspection_name', data.get('assinatura1', '')),
             'signature_engineering_name': data.get('signature_engineering_name', data.get('assinatura2', '')),
             'signature_inspection2_name': data.get('signature_inspection2_name', data.get('assinatura3', '')),
@@ -764,31 +778,48 @@ def create_rnc():
                     UPDATE rncs SET assigned_group_id = ?, causador_user_id = ? WHERE id = ?
                 ''', (assigned_group_id, int(causador_user_id), rnc_id))
                 
-                # Buscar gerentes do grupo definidos no banco de dados
+                # Buscar TODOS os gerentes e sub-gerentes do grupo (suporta múltiplos)
+                cursor.execute('''
+                    SELECT user_id FROM group_managers
+                    WHERE group_id = ?
+                ''', (assigned_group_id,))
+                group_managers_new = cursor.fetchall()
+                
+                # Buscar também das colunas antigas (compatibilidade)
                 cursor.execute('''
                     SELECT manager_user_id, sub_manager_user_id
                     FROM groups
                     WHERE id = ?
                 ''', (assigned_group_id,))
-                group_managers = cursor.fetchone()
+                group_managers_old = cursor.fetchone()
                 
                 # Lista de usuários para compartilhar: causador + gerentes
                 users_to_share = [int(causador_user_id)]
                 gerentes_encontrados = 0
                 
-                if group_managers:
-                    manager_id = group_managers[0]
-                    sub_manager_id = group_managers[1]
+                # Adicionar gerentes da nova tabela (múltiplos)
+                if group_managers_new:
+                    for manager_row in group_managers_new:
+                        manager_id = manager_row[0]
+                        if manager_id and manager_id not in users_to_share and manager_id != session['user_id']:
+                            users_to_share.append(manager_id)
+                            gerentes_encontrados += 1
+                            logger.info(f"  Gerente/Sub-gerente adicionado: ID {manager_id}")
+                
+                # Adicionar gerentes das colunas antigas (compatibilidade)
+                if group_managers_old:
+                    manager_id = group_managers_old[0]
+                    sub_manager_id = group_managers_old[1]
                     
                     if manager_id and manager_id not in users_to_share and manager_id != session['user_id']:
                         users_to_share.append(manager_id)
                         gerentes_encontrados += 1
-                        logger.info(f"  Gerente principal adicionado: ID {manager_id}")
+                        logger.info(f"  Gerente principal adicionado (coluna antiga): ID {manager_id}")
                     
                     if sub_manager_id and sub_manager_id not in users_to_share and sub_manager_id != session['user_id']:
                         users_to_share.append(sub_manager_id)
                         gerentes_encontrados += 1
-                        logger.info(f"  Sub-gerente adicionado: ID {sub_manager_id}")
+                        logger.info(f"  Sub-gerente adicionado (coluna antiga): ID {sub_manager_id}")
                 
                 if gerentes_encontrados == 0:
                     logger.warning(f"  Nenhum gerente definido no banco para o grupo {assigned_group_id}. Configure gerentes em /admin/managers")
@@ -902,13 +933,26 @@ def create_rnc():
             
             if socketio and len(shared_users_list) > 0:
                 # Buscar informações do criador
-                conn_notify = sqlite3.connect(DB_PATH)
+                conn_notify = get_db_connection()
                 cursor_notify = conn_notify.cursor()
                 
                 cursor_notify.execute('SELECT name FROM users WHERE id = ?', (session['user_id'],))
                 creator_info = cursor_notify.fetchone()
                 creator_name = creator_info[0] if creator_info else 'Usuário'
                 conn_notify.close()
+                
+                # Criar pendência persistente para os usuários compartilhados
+                try:
+                    from services.persistent_notifications_api import create_pending_notification
+                    create_pending_notification(
+                        rnc_id=rnc_id,
+                        change_type='create',
+                        target_user_ids=shared_users_list,
+                        created_by_user_id=session['user_id'],
+                        change_details={'title': data.get('title', 'RNC'), 'rnc_number': rnc_number}
+                    )
+                except Exception as e:
+                    logger.error(f" Erro ao criar pendência persistente: {e}")
                 
                 # Enviar notificação para cada usuário
                 for user_id in shared_users_list:
@@ -955,6 +999,16 @@ def create_rnc():
         except Exception as e:
             logger.error(f" Erro ao enviar notificação em tempo real: {e}")
 
+        # Log de auditoria - criação de RNC
+        try:
+            from services.audit import log_rnc_action
+            log_rnc_action(
+                session.get('user_id'), session.get('user_name'), 'RNC_CREATE',
+                rnc_id, request.remote_addr, f'RNC #{rnc_number} criada'
+            )
+        except Exception:
+            pass
+
         return jsonify({
             'success': True,
             'message': 'RNC criado com sucesso!',
@@ -981,7 +1035,7 @@ def get_rnc_valores_itens(rnc_id):
         if 'user_id' not in session:
             return jsonify({'success': False, 'message': 'Não autenticado'}), 401
         
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verificar se usuário tem acesso à RNC
@@ -1034,7 +1088,7 @@ def rnc_chat(rnc_id):
     if 'user_id' not in session:
         return redirect('/')
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('''
          SELECT r.*, u.name as user_name, au.name as assigned_user_name,
@@ -1052,14 +1106,50 @@ def rnc_chat(rnc_id):
             return render_template('error.html', message='RNC não encontrado'), 404
         cursor.execute('SELECT * FROM users WHERE id = ?', (session['user_id'],))
         current_user = cursor.fetchone()
-        cursor.execute('''
-            SELECT cm.id, cm.user_id, u.name, cm.message, cm.message_type, cm.created_at
+        
+        # Buscar mensagens com suporte a arquivos BLOB
+        cursor.execute("PRAGMA table_info(chat_messages)")
+        msg_columns = [col[1] for col in cursor.fetchall()]
+        has_file_data = 'file_data' in msg_columns
+        has_file_name = 'file_name' in msg_columns
+        
+        # Construir query para mensagens
+        msg_query = '''
+            SELECT cm.id, cm.user_id, u.name, cm.message, cm.message_type, cm.created_at, 
+                   cm.viewed_at, u.department
+        '''
+        if has_file_data:
+            msg_query += ', cm.file_data'
+        if has_file_name:
+            msg_query += ', cm.file_name'
+        
+        msg_query += '''
             FROM chat_messages cm
             JOIN users u ON cm.user_id = u.id
             WHERE cm.rnc_id = ?
             ORDER BY cm.created_at ASC
-        ''', (rnc_id,))
-        messages = cursor.fetchall()
+        '''
+        
+        cursor.execute(msg_query, (rnc_id,))
+        messages_raw = cursor.fetchall()
+        
+        # Processar mensagens para adicionar file_url
+        messages = []
+        for msg in messages_raw:
+            msg_list = list(msg)
+            # Se tem file_data (não NULL), adicionar file_url
+            if has_file_data and has_file_name:
+                file_data_idx = 8
+                if msg_list[file_data_idx]:  # Se file_data não é NULL
+                    msg_list.append(f'/api/chat/file/{msg_list[0]}')  # Adicionar file_url no índice 10
+                else:
+                    msg_list.append(None)  # Adicionar None mesmo sem arquivo
+            else:
+                # Se não tem colunas de arquivo, adicionar None para manter índices
+                msg_list.append(None)  # file_url
+            
+            messages.append(tuple(msg_list))
+        
         conn.close()
         # Mapear RNC para dict para acesso via rnc.id / rnc.rnc_number no template
         rnc_dict = {}
@@ -1138,131 +1228,187 @@ def list_rncs():
         filters_hash = f"{filter_cv}_{filter_rnc_number}_{filter_client}_{filter_equipment}_{filter_responsavel}_{filter_setor}_{filter_area_responsavel}_{filter_mp}_{filter_conjunto}_{filter_modelo}_{filter_date_from}_{filter_date_to}_{filter_year}_{filter_status}"
 
         # Cursor-based pagination params (shared util)
-        cursor_id, limit = parse_cursor_limit(request, default_limit=50000, max_limit=50000)
+        # Carregar em chunks maiores para RNCs finalizados
+        requested_limit = request.args.get('limit', '50000' if tab == 'finalized' else '500')
+        try:
+            requested_limit = int(requested_limit)
+            # Permitir até 100000 para finalizados (carregar tudo de uma vez)
+            max_allowed = 100000 if tab == 'finalized' else 5000
+            # Garantir que finalizados use pelo menos 50000
+            if tab == 'finalized' and requested_limit < 50000:
+                requested_limit = 50000
+        except:
+            requested_limit = 50000 if tab == 'finalized' else 500
+            max_allowed = 100000 if tab == 'finalized' else 5000
+        cursor_id, limit = parse_cursor_limit(request, default_limit=requested_limit, max_limit=max_allowed)
+        
+        logger.info(f"📊 PAGINAÇÃO: requested_limit={requested_limit}, max_allowed={max_allowed}, cursor_id={cursor_id}, limit={limit}, tab={tab}")
 
         cache_key = f"rncs_list_{user_id}_{tab}_{cursor_id}_{limit}_{filters_hash}"
+        # Cache habilitado
         if not force_refresh:
             cached_result = get_cached_query(cache_key)
             if cached_result:
-                logger.info(f"Retornando cache para {cache_key}")
+                logger.info(f"⚡ Cache hit para {cache_key}")
                 return jsonify(cached_result)
         else:
-            logger.info(f"Force refresh solicitado - ignorando cache para {cache_key}")
+            logger.info(f"🔄 Force refresh solicitado - ignorando cache")
 
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Obter departamento do usuário para filtro adicional
-        cursor.execute('SELECT department FROM users WHERE id = ?', (user_id,))
-        user_dept_row = cursor.fetchone()
-        user_department = user_dept_row[0] if user_dept_row else None
+        # Obter grupo do usuário para filtro de visibilidade
+        cursor.execute('SELECT group_id, department FROM users WHERE id = ?', (user_id,))
+        user_info_row = cursor.fetchone()
+        user_group_id = user_info_row[0] if (user_info_row and user_info_row[0]) else None
+        user_department = user_info_row[1] if (user_info_row and len(user_info_row) > 1) else None
         
         # Build query with cursor-based pagination
         view_all_active = has_permission(user_id, 'view_all_rncs')
         view_all_finalized = has_permission(user_id, 'view_finalized_rncs')
 
         select_prefix = "SELECT"
+        # JOINs otimizados - apenas o essencial
         joins = [
             "FROM rncs r",
             "LEFT JOIN users u ON r.user_id = u.id",
             "LEFT JOIN users au ON r.assigned_user_id = au.id",
             "LEFT JOIN users causador_u ON r.causador_user_id = causador_u.id",
+            "LEFT JOIN groups g1 ON (r.area_responsavel GLOB '[0-9]*' AND CAST(r.area_responsavel AS INTEGER) = g1.id)",
+            "LEFT JOIN groups g2 ON (r.area_responsavel NOT GLOB '[0-9]*' AND LOWER(TRIM(r.area_responsavel)) = LOWER(TRIM(g2.name)))",
+            "LEFT JOIN users resp_user ON CAST(r.responsavel AS TEXT) = CAST(resp_user.id AS TEXT)",
         ]
         where = ["(r.is_deleted = 0 OR r.is_deleted IS NULL)"]
         params = []
 
         if tab == 'finalized':
-            # Permitir que o frontend sobreponha o status padrão
-            if filter_status:
-                where.append("r.status = ?")
-                params.append(filter_status)
-            else:
-                where.append("r.status = 'Finalizado'")
+            # CORRIGIDO: Sempre filtrar por status Finalizado
+            where.append("r.status = 'Finalizado'")
+            
             if not view_all_finalized:
                 joins.append("LEFT JOIN rnc_shares rs ON rs.rnc_id = r.id")
-                joins.append("LEFT JOIN users user_group ON user_group.id = ?")
                 
-                # ============================================
                 # LÓGICA DE VISIBILIDADE - RNCs FINALIZADAS
-                # Mostrar todas as RNCs finalizadas relacionadas ao usuário
-                # SEM filtro de gerente (finalizadas devem aparecer para todos)
-                # ============================================
-                permission_conditions = [
-                    "r.user_id = ?",
-                    "r.assigned_user_id = ?",
-                    "rs.shared_with_user_id = ?"
-                ]
+                # Gerentes/Subgerentes veem todas do grupo
+                # Usuários comuns veem apenas as suas
                 
-                # Se o usuário tem departamento, incluir RNCs da mesma área (LIKE para pegar variações)
-                if user_department:
-                    permission_conditions.append("LOWER(TRIM(r.area_responsavel)) LIKE LOWER(TRIM(?))")
-                    permission_conditions.append("LOWER(TRIM(r.setor)) LIKE LOWER(TRIM(?))")
-                    params.extend([user_id, user_id, user_id, user_id, f'%{user_department.strip()}%', f'%{user_department.strip()}%'])
+                # Verificar se é gerente ou subgerente (nova tabela + colunas antigas)
+                cursor.execute("""
+                    SELECT 1 FROM group_managers WHERE user_id = ?
+                    UNION
+                    SELECT 1 FROM groups WHERE (manager_user_id = ? OR sub_manager_user_id = ?)
+                    LIMIT 1
+                """, (user_id, user_id, user_id))
+                is_manager = cursor.fetchone() is not None
+                
+                if is_manager:
+                    # Gerente/Subgerente - vê tudo do grupo
+                    permission_conditions = [
+                        "r.assigned_group_id = ?",
+                    ]
+                    params.append(user_group_id)
                 else:
+                    # Usuário comum - vê apenas suas RNCs
+                    permission_conditions = [
+                        "r.causador_user_id = ?",  # É o causador
+                        "r.user_id = ?",            # Criou a RNC
+                        "r.assigned_user_id = ?",   # Atribuída a ele
+                        "rs.shared_with_user_id = ?",  # Compartilhada com ele
+                    ]
                     params.extend([user_id, user_id, user_id, user_id])
                 
-                # REMOVIDO: Lógica que adicionava assigned_group_id
-                # Isso causava o bug de mostrar TODAS as RNCs do grupo
-                # Agora só mostra RNCs explicitamente compartilhadas via rnc_shares
                 where.append(f"({' OR '.join(permission_conditions)})")
                 select_prefix = "SELECT DISTINCT"
         elif tab.lower() in ('engineering', 'engenharia'):
-            # Aba especÃ­fica de ENGENHARIA: mostrar somente RNCs FINALIZADOS da Ã¡rea/setor Engenharia
-            # Isso antes era tratado como 'active' por não haver ramificação dedicada.
-                # Filtra explicitamente por Engenharia (area_responsavel ou setor contém 'engenharia')
-                # Ou por RNC atribuída a um grupo cujo nome contenha 'engenharia'.
-                # Nota: não exigimos status='Finalizado' aqui para que RNCs encaminhadas
-                # para Engenharia apareçam mesmo antes da finalização.
-                where.append("(LOWER(TRIM(r.area_responsavel)) LIKE '%engenharia%' OR LOWER(TRIM(r.setor)) LIKE '%engenharia%' OR (r.assigned_group_id IS NOT NULL AND EXISTS (SELECT 1 FROM groups g WHERE g.id = r.assigned_group_id AND LOWER(g.name) LIKE '%engenharia%')))")
-                if not view_all_finalized:
-                    joins.append("LEFT JOIN rnc_shares rs ON rs.rnc_id = r.id")
-                    joins.append("LEFT JOIN users user_group_eng ON user_group_eng.id = ?")
+            # Aba específica de ENGENHARIA: mostrar RNCs relacionadas à Engenharia
+            where.append("(LOWER(TRIM(r.area_responsavel)) LIKE '%engenharia%' OR LOWER(TRIM(r.setor)) LIKE '%engenharia%' OR (r.assigned_group_id IS NOT NULL AND EXISTS (SELECT 1 FROM groups g WHERE g.id = r.assigned_group_id AND LOWER(g.name) LIKE '%engenharia%')))")
+            
+            if not view_all_finalized:
+                joins.append("LEFT JOIN rnc_shares rs ON rs.rnc_id = r.id")
                 
-                    # ============================================
-                    # LÓGICA DE VISIBILIDADE CORRIGIDA (ENGENHARIA)
-                    # Inclui condição para gerentes/sub-gerentes
-                    # ============================================
+                # LÓGICA DE VISIBILIDADE - Usuários veem apenas RNCs do próprio grupo
+                # Verificar se é gerente ou subgerente (nova tabela + colunas antigas)
+                cursor.execute("""
+                    SELECT 1 FROM group_managers WHERE user_id = ?
+                    UNION
+                    SELECT 1 FROM groups WHERE (manager_user_id = ? OR sub_manager_user_id = ?)
+                    LIMIT 1
+                """, (user_id, user_id, user_id))
+                is_manager = cursor.fetchone() is not None
+                
+                if is_manager:
+                    # Gerente/Subgerente - vê tudo do grupo
                     permission_conditions = [
+                        "r.assigned_group_id = ?",
+                    ]
+                    params.append(user_group_id)
+                else:
+                    # Usuário comum - vê apenas suas RNCs
+                    permission_conditions = [
+                        "r.causador_user_id = ?",
                         "r.user_id = ?",
                         "r.assigned_user_id = ?",
                         "rs.shared_with_user_id = ?",
-                        # Se o usuário é gerente ou sub-gerente do grupo atribuído à RNC
-                        "(r.assigned_group_id IS NOT NULL AND EXISTS (SELECT 1 FROM groups g WHERE g.id = r.assigned_group_id AND (g.manager_user_id = ? OR g.sub_manager_user_id = ?)))"
                     ]
-                    params.extend([user_id, user_id, user_id, user_id, user_id, user_id])
-                    where.append(f"({' OR '.join(permission_conditions)})")
-                    select_prefix = "SELECT DISTINCT"
+                    params.extend([user_id, user_id, user_id, user_id])
+                
+                where.append(f"({' OR '.join(permission_conditions)})")
+                select_prefix = "SELECT DISTINCT"
         else:
-            # default to active - mostrar apenas RNCs NÃO finalizadas
-            # CORRIGIDO: Filtrar por status mesmo para admin, aba "active" não deve mostrar finalizadas
-            where.append("r.status NOT IN ('Finalizado')")
+            # ATENÇÃO: Aba ACTIVE - Apenas RNCs ativas (não finalizadas e não excluídas)
+            # CORRIGIDO: Excluir explicitamente RNCs com status "Finalizado"
+            where.append("r.status != 'Finalizado'")
+            where.append("(r.finalized_at IS NULL OR r.finalized_at = '')")
             
             if not view_all_active:
-                # Usuário normal vê apenas suas RNCs ativas
                 joins.append("LEFT JOIN rnc_shares rs ON rs.rnc_id = r.id")
-                joins.append("LEFT JOIN users user_group_active ON user_group_active.id = ?")
                 
-                # ============================================
-                # LÓGICA DE VISIBILIDADE CORRIGIDA (ACTIVE)
-                # Inclui condição para gerentes/sub-gerentes
-                # ============================================
-                permission_conditions_active = [
-                    "r.user_id = ?",
-                    "r.assigned_user_id = ?",
-                    "rs.shared_with_user_id = ?",
-                    # Se o usuário é gerente ou sub-gerente do grupo atribuído à RNC
-                    "(r.assigned_group_id IS NOT NULL AND EXISTS (SELECT 1 FROM groups g WHERE g.id = r.assigned_group_id AND (g.manager_user_id = ? OR g.sub_manager_user_id = ?)))"
-                ]
+                # LÓGICA DE VISIBILIDADE (ACTIVE) - Usuários comuns veem apenas:
+                # 1. RNCs onde eles são causador (causador_user_id)
+                # 2. RNCs que eles criaram (user_id)
+                # 3. RNCs atribuídas a eles (assigned_user_id)
+                # 4. RNCs compartilhadas com eles (rnc_shares)
+                # GERENTES/SUBGERENTES veem todas do grupo
                 
-                # Se o usuário tem departamento, incluir RNCs da mesma área (LIKE para pegar variações)
-                if user_department:
-                    permission_conditions_active.append("LOWER(TRIM(r.area_responsavel)) LIKE LOWER(TRIM(?))")
-                    permission_conditions_active.append("LOWER(TRIM(r.setor)) LIKE LOWER(TRIM(?))")
-                    params.extend([user_id, user_id, user_id, user_id, user_id, user_id, f'%{user_department.strip()}%', f'%{user_department.strip()}%'])
+                # Verificar se é gerente ou subgerente (nova tabela + colunas antigas)
+                cursor.execute("""
+                    SELECT 1 FROM group_managers WHERE user_id = ?
+                    UNION
+                    SELECT 1 FROM groups WHERE (manager_user_id = ? OR sub_manager_user_id = ?)
+                    LIMIT 1
+                """, (user_id, user_id, user_id))
+                is_manager = cursor.fetchone() is not None
+                
+                if is_manager:
+                    # Gerente/Subgerente - vê tudo do grupo
+                    permission_conditions_active = [
+                        "r.assigned_group_id = ?",
+                    ]
+                    params.append(user_group_id)
                 else:
-                    params.extend([user_id, user_id, user_id, user_id, user_id, user_id])
+                    # Usuário comum - vê apenas RNCs específicas
+                    # RNCs compartilhadas/causador só aparecem se tiver pendência NÃO respondida
+                    # Isso permite que o admin "reabra" a pendência para o usuário ver novamente
+                    # EXCETO: RNCs que ele CRIOU (user_id) sempre aparecem
+                    
+                    # Adicionar JOIN para verificar pendências
+                    joins.append("LEFT JOIN rnc_change_notifications rcn_check ON rcn_check.rnc_id = r.id")
+                    joins.append("LEFT JOIN rnc_notification_recipients rnr_check ON rnr_check.notification_id = rcn_check.id AND rnr_check.user_id = " + str(user_id))
+                    
+                    # Condição de pendência ativa
+                    pendencia_ativa = "(rnr_check.is_responded = 0 OR rnr_check.is_responded IS NULL)"
+                    
+                    permission_conditions_active = [
+                        "r.user_id = ?",             # Criou a RNC - SEMPRE vê
+                        # Causador - só vê se tiver pendência ativa
+                        f"(r.causador_user_id = ? AND {pendencia_ativa})",
+                        # Atribuída - só vê se tiver pendência ativa
+                        f"(r.assigned_user_id = ? AND {pendencia_ativa})",
+                        # Compartilhada - só vê se tiver pendência ativa
+                        f"(rs.shared_with_user_id = ? AND {pendencia_ativa})",
+                    ]
+                    params.extend([user_id, user_id, user_id, user_id])
                 
-                # REMOVIDO: Lógica de assigned_group_id (causava bug)
                 where.append(f"({' OR '.join(permission_conditions_active)})")
                 select_prefix = "SELECT DISTINCT"
 
@@ -1293,7 +1439,8 @@ def list_rncs():
             params.append(f"%{filter_responsavel}%")
         
         if filter_setor:
-            where.append("LOWER(TRIM(r.setor)) LIKE LOWER(TRIM(?))")
+            where.append("(LOWER(TRIM(r.setor)) LIKE LOWER(TRIM(?)) OR LOWER(TRIM(r.area_responsavel)) LIKE LOWER(TRIM(?)))")
+            params.append(f"%{filter_setor}%")
             params.append(f"%{filter_setor}%")
         
         if filter_area_responsavel:
@@ -1352,12 +1499,28 @@ def list_rncs():
             except Exception as e:
                 logger.warning(f"Formato de data inválido (date_to): {filter_date_to} - {e}")
 
+        # Subquery para verificar se o usuário tem pendência ativa nesta RNC
+        pending_subquery = f"""
+            (SELECT 1 FROM rnc_notification_recipients rnr_pend 
+             JOIN rnc_change_notifications rcn_pend ON rcn_pend.id = rnr_pend.notification_id
+             WHERE rcn_pend.rnc_id = r.id 
+             AND rnr_pend.user_id = {user_id}
+             AND (rnr_pend.is_responded = 0 OR rnr_pend.is_responded IS NULL)
+             LIMIT 1) AS has_pending_notification
+        """
+
         columns = (
             "r.id, r.rnc_number, r.title, r.description, r.equipment, r.client, r.priority, r.status, "
             "r.user_id, r.assigned_user_id, r.created_at, r.updated_at, r.finalized_at, "
             "r.responsavel, r.setor, r.area_responsavel, au.name AS assigned_user_name, u.name AS user_name, "
             "r.cv, r.mp, r.conjunto, r.modelo, r.drawing, r.description_drawing, "
-            "causador_u.name AS causador_nome, r.ass_responsavel AS setor_responsavel"
+            "causador_u.name AS causador_nome, "+
+            "COALESCE((SELECT name FROM groups WHERE id = CAST(r.area_responsavel AS INTEGER)), "+
+            "         (SELECT name FROM groups WHERE id = CAST(r.setor AS INTEGER)), "+
+            "         r.area_responsavel, r.setor, r.ass_responsavel, '') AS setor_responsavel, "
+            "r.cause_rnc, r.action_rnc, r.price, "
+            "COALESCE(g1.name, g2.name, r.area_responsavel) AS area_responsavel_name, resp_user.name AS responsavel_name, "
+            f"{pending_subquery}"
         )
 
         sql = f"""
@@ -1409,11 +1572,25 @@ def list_rncs():
                 'description_drawing': rnc[23] if len(rnc) > 23 else None,
                 # NOVOS CAMPOS: Nome do causador e setor responsável da visualização da RNC
                 'causador_nome': rnc[24] if (len(rnc) > 24 and rnc[24]) else None,  # Nome do causador (da assinatura)
-                'setor_responsavel': rnc[25] if (len(rnc) > 25 and rnc[25]) else None  # Setor responsável (da assinatura)
+                'setor_responsavel': rnc[25] if (len(rnc) > 25 and rnc[25]) else None,  # Setor responsável (da assinatura)
+                # CAMPOS PARA FILTROS DE SUBTÓPICOS
+                'causa': rnc[26] if (len(rnc) > 26 and rnc[26]) else None,  # Causa da RNC (cause_rnc)
+                'acao': rnc[27] if (len(rnc) > 27 and rnc[27]) else None,  # Ação a ser tomada (action_rnc)
+                'valor_total': rnc[28] if (len(rnc) > 28 and rnc[28]) else None,  # Valor total (price)
+                # NOMES PARA FILTROS
+                'area_responsavel_name': rnc[29] if (len(rnc) > 29 and rnc[29]) else None,  # Nome do grupo (área responsável)
+                'responsavel_name': rnc[30] if (len(rnc) > 30 and rnc[30]) else None,  # Nome do responsável
+                # PENDÊNCIA: Indica se o usuário logado tem pendência ativa nesta RNC
+                'has_pending_notification': bool(rnc[31]) if (len(rnc) > 31 and rnc[31]) else False
             }
             for rnc in rncs_rows
         ]
 
+        # DEBUG: Log primeiro RNC para verificar campos
+        if formatted_rncs and len(formatted_rncs) > 0:
+            sample = formatted_rncs[0]
+            logger.info(f"🔍 AMOSTRA RNC: area_responsavel={sample.get('area_responsavel')}, area_responsavel_name={sample.get('area_responsavel_name')}, setor={sample.get('setor')}")
+        
         result = {
             'success': True,
             'rncs': formatted_rncs,
@@ -1422,11 +1599,11 @@ def list_rncs():
             'next_cursor': next_cursor,
             'has_more': has_more,
         }
-        # Cache the result (Redis-backed with in-memory fallback)
-        cache_query(cache_key, result, ttl=120)
+        # OTIMIZAÇÃO: Aumentar TTL do cache para 5 minutos (300s)
+        cache_query(cache_key, result, ttl=300)
 
         response = jsonify(result)
-        response.headers['Cache-Control'] = 'public, max-age=120' if not force_refresh else 'no-cache'
+        response.headers['Cache-Control'] = 'public, max-age=300' if not force_refresh else 'no-cache'
         response.headers['X-Content-Type-Options'] = 'nosniff'
         return response
     except Exception as e:
@@ -1448,7 +1625,7 @@ def api_get_rnc(rnc_id):
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'Usuário não autenticado'}), 401
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('PRAGMA table_info(rncs)')
         columns = [row[1] for row in cursor.fetchall()]
@@ -1471,7 +1648,7 @@ def view_rnc(rnc_id):
     if 'user_id' not in session:
         return redirect('/')
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('''
             SELECT r.*,
@@ -1480,7 +1657,9 @@ def view_rnc(rnc_id):
                    u.department as user_department,
                    au.department as assigned_user_department,
                    g.name as area_responsavel_name,
-                   r.ass_responsavel as setor_responsavel,
+                   COALESCE((SELECT name FROM groups WHERE id = CAST(r.area_responsavel AS INTEGER)),
+                            (SELECT name FROM groups WHERE id = CAST(r.setor AS INTEGER)),
+                            r.area_responsavel, r.setor, r.ass_responsavel, '') as setor_responsavel,
                    resp_user.name as responsavel_name,
                    insp_user.name as inspetor_name,
                    cu.name as causador_name,
@@ -1488,7 +1667,9 @@ def view_rnc(rnc_id):
             FROM rncs r
             LEFT JOIN users u ON r.user_id = u.id
             LEFT JOIN users au ON r.assigned_user_id = au.id
-            LEFT JOIN groups g ON g.id = CAST(r.area_responsavel AS INTEGER)
+            LEFT JOIN groups g1 ON (r.area_responsavel GLOB '[0-9]*' AND CAST(r.area_responsavel AS INTEGER) = g1.id)
+            LEFT JOIN groups g2 ON (r.area_responsavel NOT GLOB '[0-9]*' AND LOWER(TRIM(r.area_responsavel)) = LOWER(TRIM(g2.name)))
+            LEFT JOIN groups g ON COALESCE(g1.id, g2.id) = g.id
             LEFT JOIN users gerente_user ON g.manager_user_id = gerente_user.id
             LEFT JOIN users resp_user ON resp_user.id = CAST(r.responsavel AS INTEGER)
             LEFT JOIN users insp_user ON insp_user.id = CAST(r.inspetor AS INTEGER)
@@ -1505,7 +1686,7 @@ def view_rnc(rnc_id):
             return render_template('error.html', message='Erro interno do sistema')
 
         try:
-            conn_cols = sqlite3.connect(DB_PATH)
+            conn_cols = get_db_connection()
             cur_cols = conn_cols.cursor()
             cur_cols.execute('PRAGMA table_info(rncs)')
             base_columns = [row[1] for row in cur_cols.fetchall()]
@@ -1513,13 +1694,13 @@ def view_rnc(rnc_id):
         except Exception:
             base_columns = [
                 'id','rnc_number','title','description','equipment','client','priority','status','user_id','assigned_user_id',
-                'is_deleted','deleted_at','finalized_at','created_at','updated_at','disposition_usar','disposition_retrabalhar',
+                'is_deleted','deleted_at','finalized_at','created_at','updated_at','price','disposition_usar','disposition_retrabalhar',
                 'disposition_rejeitar','disposition_sucata','disposition_devolver_estoque','disposition_devolver_fornecedor',
-                'inspection_reprovado','inspection_ver_rnc','signature_inspection_date','signature_engineering_date',
-                'signature_inspection2_date','signature_inspection_name','signature_engineering_name','inspection_aprovado',
-                'signature_inspection2_name','price','department','instruction_retrabalho','cause_rnc','action_rnc',
-                'responsavel','inspetor','setor','material','quantity','drawing','area_responsavel','ass_responsavel','mp','revision',
-                'position','cv','conjunto','modelo','description_drawing','purchase_order','assigned_group_id','causador_user_id'
+                'inspection_aprovado','inspection_reprovado','inspection_ver_rnc','signature_inspection_date','signature_engineering_date',
+                'signature_inspection2_date','signature_inspection_name','signature_engineering_name','signature_inspection2_name',
+                'instruction_retrabalho','cause_rnc','action_rnc','responsavel','inspetor','setor','material','quantity','drawing',
+                'area_responsavel','mp','revision','position','cv','conjunto','modelo','description_drawing','purchase_order',
+                'justificativa','price_note','usuario_valorista_id','cv_desenho','assigned_group_id','causador_user_id','ass_responsavel'
             ]
 
         columns = base_columns + ['user_name', 'assigned_user_name', 'user_department', 'assigned_user_department', 'area_responsavel_name', 'setor_responsavel', 'responsavel_name', 'inspetor_name', 'causador_name', 'gerente_grupo_name']
@@ -1552,7 +1733,15 @@ def view_rnc(rnc_id):
         # Determinar criador de forma robusta usando o dict
         is_creator = str(session['user_id']) == str(rnc_dict.get('user_id'))
         
-        return render_template('view_rnc_full.html', rnc=rnc_dict, txt_fields=txt_fields, is_creator=is_creator)
+        # NÃO marcar pendências como respondidas ao apenas visualizar
+        # A pendência só será marcada quando o causador preencher a CAUSA DA RNC
+        
+        # Renderizar com headers anti-cache
+        response = make_response(render_template('view_rnc_full.html', rnc=rnc_dict, txt_fields=txt_fields, is_creator=is_creator))
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        return response
     except Exception as e:
         return render_template('error.html', message=f'Erro interno do sistema: {str(e)}')
         return render_template('view_rnc_full.html', rnc=rnc_dict, is_creator=is_creator, txt_fields=txt_fields)
@@ -1567,7 +1756,7 @@ def reply_rnc(rnc_id):
         return redirect('/')
     try:
         from services.permissions import has_permission
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('''
             SELECT r.*, 
@@ -1581,7 +1770,9 @@ def reply_rnc(rnc_id):
               FROM rncs r
               LEFT JOIN users u ON r.user_id = u.id
               LEFT JOIN users au ON r.assigned_user_id = au.id
-              LEFT JOIN groups g ON g.id = CAST(r.area_responsavel AS INTEGER)
+              LEFT JOIN groups g1 ON (r.area_responsavel GLOB '[0-9]*' AND CAST(r.area_responsavel AS INTEGER) = g1.id)
+              LEFT JOIN groups g2 ON (r.area_responsavel NOT GLOB '[0-9]*' AND LOWER(TRIM(r.area_responsavel)) = LOWER(TRIM(g2.name)))
+              LEFT JOIN groups g ON COALESCE(g1.id, g2.id) = g.id
               LEFT JOIN users gerente_user ON g.manager_user_id = gerente_user.id
               LEFT JOIN users resp_user ON resp_user.id = CAST(r.responsavel AS INTEGER)
               LEFT JOIN users insp_user ON insp_user.id = CAST(r.inspetor AS INTEGER)
@@ -1600,10 +1791,34 @@ def reply_rnc(rnc_id):
         is_assigned = assigned_user_id is not None and str(session['user_id']) == str(assigned_user_id)
         is_admin = has_permission(session['user_id'], 'admin_access')
         can_reply = has_permission(session['user_id'], 'reply_rncs')
+        
+        # VERIFICAR SE É GERENTE OU SUB-GERENTE DO GRUPO DA RNC
+        is_manager_of_group = False
+        try:
+            conn_mgr = get_db_connection()
+            cur_mgr = conn_mgr.cursor()
+            cur_mgr.execute('SELECT assigned_group_id FROM rncs WHERE id = ?', (rnc_id,))
+            group_row = cur_mgr.fetchone()
+            if group_row and group_row[0]:
+                rnc_group_id = group_row[0]
+                # Verificar na nova tabela group_managers (múltiplos gerentes)
+                cur_mgr.execute('SELECT 1 FROM group_managers WHERE group_id = ? AND user_id = ?', (rnc_group_id, session['user_id']))
+                if cur_mgr.fetchone():
+                    is_manager_of_group = True
+                else:
+                    # Verificar nas colunas antigas (compatibilidade)
+                    cur_mgr.execute('SELECT manager_user_id, sub_manager_user_id FROM groups WHERE id = ?', (rnc_group_id,))
+                    managers = cur_mgr.fetchone()
+                    if managers and (managers[0] == session['user_id'] or managers[1] == session['user_id']):
+                        is_manager_of_group = True
+            conn_mgr.close()
+        except Exception as e:
+            logger.error(f"Erro ao verificar gerência do grupo na rota reply: {e}")
+        
         # Novo: permitir responder se o RNC foi compartilhado com o usuÃ¡rio (qualquer nÃ­vel)
         shared_can_reply = False
         try:
-            conn_share = sqlite3.connect(DB_PATH)
+            conn_share = get_db_connection()
             cur_share = conn_share.cursor()
             cur_share.execute('SELECT 1 FROM rnc_shares WHERE rnc_id = ? AND shared_with_user_id = ? LIMIT 1', (rnc_id, session['user_id']))
             shared_can_reply = cur_share.fetchone() is not None
@@ -1611,11 +1826,11 @@ def reply_rnc(rnc_id):
         except Exception:
             shared_can_reply = False
 
-        if not (is_creator or is_assigned or is_admin or can_reply or shared_can_reply):
+        if not (is_creator or is_assigned or is_admin or can_reply or shared_can_reply or is_manager_of_group):
             return render_template('error.html', message='Acesso negado: você não tem permissão para responder este RNC')
 
         try:
-            conn_cols = sqlite3.connect(DB_PATH)
+            conn_cols = get_db_connection()
             cur_cols = conn_cols.cursor()
             cur_cols.execute('PRAGMA table_info(rncs)')
             base_columns = [row[1] for row in cur_cols.fetchall()]
@@ -1623,13 +1838,13 @@ def reply_rnc(rnc_id):
         except Exception:
             base_columns = [
                 'id','rnc_number','title','description','equipment','client','priority','status','user_id','assigned_user_id',
-                'is_deleted','deleted_at','finalized_at','created_at','updated_at','disposition_usar','disposition_retrabalhar',
+                'is_deleted','deleted_at','finalized_at','created_at','updated_at','price','disposition_usar','disposition_retrabalhar',
                 'disposition_rejeitar','disposition_sucata','disposition_devolver_estoque','disposition_devolver_fornecedor',
                 'inspection_aprovado','inspection_reprovado','inspection_ver_rnc','signature_inspection_date','signature_engineering_date',
-                'signature_inspection2_date','signature_inspection_name','signature_engineering_name','signature_inspection2_name','price',
-                'department','instruction_retrabalho','cause_rnc','action_rnc','responsavel','inspetor','setor','material','quantity',
-                'drawing','area_responsavel','ass_responsavel','mp','revision','position','cv','conjunto','modelo','description_drawing',
-                'purchase_order','assigned_group_id','causador_user_id'
+                'signature_inspection2_date','signature_inspection_name','signature_engineering_name','signature_inspection2_name',
+                'instruction_retrabalho','cause_rnc','action_rnc','responsavel','inspetor','setor','material','quantity',
+                'drawing','area_responsavel','mp','revision','position','cv','conjunto','modelo','description_drawing',
+                'purchase_order','justificativa','price_note','usuario_valorista_id','cv_desenho','assigned_group_id','causador_user_id','ass_responsavel'
             ]
         columns = base_columns + ['user_name', 'assigned_user_name', 'area_responsavel_name', 'responsavel_name', 'inspetor_name', 'causador_name', 'gerente_grupo_name']
 
@@ -1658,8 +1873,24 @@ def reply_rnc(rnc_id):
         # Extrair campos de texto da descrição
         txt_fields = parse_label_map(rnc_dict.get('description') or '')
         
+        # Normalizar campo created_at para string (pode vir como tupla do SQLite)
+        if rnc_dict.get('created_at'):
+            created_at_raw = rnc_dict['created_at']
+            if isinstance(created_at_raw, (tuple, list)):
+                rnc_dict['created_at'] = str(created_at_raw[0]) if created_at_raw else ''
+            else:
+                rnc_dict['created_at'] = str(created_at_raw) if created_at_raw else ''
+            # Garantir formato YYYY-MM-DD para input type="date"
+            if rnc_dict['created_at'] and len(rnc_dict['created_at']) >= 10:
+                rnc_dict['created_at'] = rnc_dict['created_at'][:10]
+        else:
+            rnc_dict['created_at'] = ''
+        
         # LOG DE DEBUG: Verificar campos carregados
         logger.info(f"🔍 DEBUG reply_rnc RNC #{rnc_id}:")
+        logger.info(f"  - created_at (normalizado): '{rnc_dict.get('created_at')}'")
+        logger.info(f"  - created_at tipo: {type(rnc_dict.get('created_at'))}")
+        logger.info(f"  - created_at len: {len(rnc_dict.get('created_at', ''))} chars")
         logger.info(f"  - area_responsavel: {rnc_dict.get('area_responsavel')}")
         logger.info(f"  - area_responsavel_name: {rnc_dict.get('area_responsavel_name')}")
         logger.info(f"  - responsavel: {rnc_dict.get('responsavel')}")
@@ -1674,7 +1905,7 @@ def reply_rnc(rnc_id):
         # Buscar lista de clientes do banco de dados
         clients = []
         try:
-            conn_clients = sqlite3.connect(DB_PATH)
+            conn_clients = get_db_connection()
             cursor_clients = conn_clients.cursor()
             cursor_clients.execute('SELECT DISTINCT name FROM clients ORDER BY name')
             clients = [row[0] for row in cursor_clients.fetchall() if row[0]]
@@ -1684,7 +1915,20 @@ def reply_rnc(rnc_id):
             logger.warning(f"Erro ao carregar clientes para reply_rnc: {e}")
             clients = []
         
-        return render_template('edit_rnc_form.html', rnc=rnc_dict, txt_fields=txt_fields, is_editing=True, is_reply=True, clients=clients)
+        # Log de auditoria - visualização de RNC
+        try:
+            from services.audit import log_rnc_action
+            log_rnc_action(
+                session['user_id'], session.get('user_name'), 'RNC_VIEW',
+                rnc_id, request.remote_addr, 'Visualização para resposta'
+            )
+        except Exception:
+            pass
+        
+        # NÃO marcar pendências como respondidas ao apenas acessar página
+        # A pendência só será marcada quando o causador preencher a CAUSA DA RNC
+        
+        return render_template('edit_rnc_form.html', rnc=rnc_dict, txt_fields=txt_fields, is_editing=True, is_reply=True, clients=clients, is_admin=is_admin, is_manager=is_manager_of_group)
     except Exception as e:
         logger.error(f"Erro ao abrir modo Responder para RNC {rnc_id}: {e}")
         return render_template('error.html', message='Erro interno do sistema')
@@ -1696,7 +1940,7 @@ def print_rnc(rnc_id):
         return redirect('/')
     try:
         # Carregar dados básicos do RNC diretamente
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('SELECT * FROM rncs WHERE id = ?', (rnc_id,))
         rnc_data = cursor.fetchone()
@@ -1705,7 +1949,7 @@ def print_rnc(rnc_id):
             logger.error(f"Erro ao buscar RNC {rnc_id}")
             return render_template('error.html', message='RNC não encontrado')
 
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('''
             SELECT r.*, 
@@ -1717,7 +1961,9 @@ def print_rnc(rnc_id):
             FROM rncs r 
             LEFT JOIN users u ON r.user_id = u.id 
             LEFT JOIN users au ON r.assigned_user_id = au.id
-            LEFT JOIN groups g ON g.id = CAST(r.area_responsavel AS INTEGER)
+            LEFT JOIN groups g1 ON (r.area_responsavel GLOB '[0-9]*' AND CAST(r.area_responsavel AS INTEGER) = g1.id)
+            LEFT JOIN groups g2 ON (r.area_responsavel NOT GLOB '[0-9]*' AND LOWER(TRIM(r.area_responsavel)) = LOWER(TRIM(g2.name)))
+            LEFT JOIN groups g ON COALESCE(g1.id, g2.id) = g.id
             LEFT JOIN users resp_user ON resp_user.id = CAST(r.responsavel AS INTEGER)
             LEFT JOIN users insp_user ON insp_user.id = CAST(r.inspetor AS INTEGER)
             WHERE r.id = ?
@@ -1813,7 +2059,7 @@ def print_rnc_modelo(rnc_id):
         return redirect('/')
     try:
         # Carregar linha completa com joins para nomes
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('''
             SELECT r.*, u.name as user_name, au.name as assigned_user_name
@@ -1921,7 +2167,7 @@ def pdf_generator(rnc_id):
     try:
         from services.permissions import has_permission
         # Carregar dados bÃ¡sicos do RNC
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('SELECT * FROM rncs WHERE id = ?', (rnc_id,))
         rnc_data = cursor.fetchone()
@@ -1981,7 +2227,7 @@ def download_rnc_pdf(rnc_id):
         
         # Verificar permissÃµes
         user_id = session['user_id']
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('SELECT user_id, assigned_user_id FROM rncs WHERE id = ? AND is_deleted = 0', (rnc_id,))
         rnc = cursor.fetchone()
@@ -2002,7 +2248,7 @@ def download_rnc_pdf(rnc_id):
         # Verificar se foi compartilhada
         shared_can_view = False
         try:
-            conn_share = sqlite3.connect(DB_PATH)
+            conn_share = get_db_connection()
             cur_share = conn_share.cursor()
             cur_share.execute('SELECT 1 FROM rnc_shares WHERE rnc_id = ? AND shared_with_user_id = ? LIMIT 1', (rnc_id, user_id))
             shared_can_view = cur_share.fetchone() is not None
@@ -2017,6 +2263,16 @@ def download_rnc_pdf(rnc_id):
         pdf_path = pdf_generator.generate_pdf(rnc_id)
         if not pdf_path:
             return render_template('error.html', message='Erro ao gerar PDF da RNC')
+        
+        # Log de auditoria - download de PDF
+        try:
+            from services.audit import log_rnc_action
+            log_rnc_action(
+                session.get('user_id'), session.get('user_name'), 'RNC_PRINT',
+                rnc_id, request.remote_addr, 'Download PDF'
+            )
+        except Exception:
+            pass
         
         # Enviar arquivo para download
         from flask import send_file
@@ -2080,7 +2336,7 @@ def update_rnc_api(rnc_id):
                     'success': False,
                     'message': f'Os seguintes campos estão bloqueados para seu grupo: {", ".join(attempted_fields)}'
                 }), 403
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('SELECT * FROM rncs WHERE id = ?', (rnc_id,))
         rnc_data = cursor.fetchone()
@@ -2104,6 +2360,26 @@ def update_rnc_api(rnc_id):
             logger.error(f"Erro ao verificar compartilhamento: {e}")
             is_shared_with_user = False
         
+        # VERIFICAR SE É GERENTE OU SUB-GERENTE DO GRUPO DA RNC
+        is_manager_of_group = False
+        try:
+            cursor.execute('SELECT assigned_group_id FROM rncs WHERE id = ?', (rnc_id,))
+            group_row = cursor.fetchone()
+            if group_row and group_row[0]:
+                rnc_group_id = group_row[0]
+                # Verificar na nova tabela group_managers (múltiplos gerentes)
+                cursor.execute('SELECT 1 FROM group_managers WHERE group_id = ? AND user_id = ?', (rnc_group_id, session['user_id']))
+                if cursor.fetchone():
+                    is_manager_of_group = True
+                else:
+                    # Verificar nas colunas antigas (compatibilidade)
+                    cursor.execute('SELECT manager_user_id, sub_manager_user_id FROM groups WHERE id = ?', (rnc_group_id,))
+                    managers = cursor.fetchone()
+                    if managers and (managers[0] == session['user_id'] or managers[1] == session['user_id']):
+                        is_manager_of_group = True
+        except Exception as e:
+            logger.error(f"Erro ao verificar gerência do grupo: {e}")
+        
         # LOGS DETALHADOS PARA DEBUG
         logger.info(f"=== VERIFICAÇÃO DE PERMISSÕES PARA RESPONDER RNC {rnc_id} ===")
         logger.info(f"User ID: {session.get('user_id')}")
@@ -2112,10 +2388,11 @@ def update_rnc_api(rnc_id):
         logger.info(f"É admin? {has_admin}")
         logger.info(f"Pode responder (reply_rncs)? {can_reply}")
         logger.info(f"Foi compartilhado? {is_shared_with_user}")
+        logger.info(f"É gerente do grupo? {is_manager_of_group}")
         logger.info(f"Permissões do usuário: {session.get('user_role', 'unknown')}")
         
         # PERMISSÕES SIMPLIFICADAS: Admin, criador, quem pode responder ou compartilhado
-        if not (has_admin or user_is_creator or can_reply or is_shared_with_user):
+        if not (has_admin or user_is_creator or can_reply or is_shared_with_user or is_manager_of_group):
             logger.warning(f"âŒ ACESSO NEGADO - Nenhuma permissÃ£o vÃ¡lida encontrada")
             logger.warning(f"   User: {session.get('user_name')} (ID: {session.get('user_id')})")
             logger.warning(f"   Role: {session.get('user_role')}")
@@ -2149,13 +2426,38 @@ def update_rnc_api(rnc_id):
 
         cursor.execute('SELECT signature_inspection_name, signature_engineering_name, signature_inspection2_name FROM rncs WHERE id = ?', (rnc_id,))
         current_sign = cursor.fetchone() or (None, None, None)
-        new_sign = (
-            data.get('signature_inspection_name', current_sign[0] or ''),
-            data.get('signature_engineering_name', current_sign[1] or ''),
-            data.get('signature_inspection2_name', current_sign[2] or '')
-        )
-        if not any(s and s != 'NOME' for s in new_sign):
-            return jsonify({'success': False, 'message': 'Ã‰ obrigatÃ³rio preencher pelo menos uma assinatura!'}), 400
+        
+        # Pegar valores enviados ou manter do banco
+        sig1 = data.get('signature_inspection_name', current_sign[0] or '')
+        sig2 = data.get('signature_engineering_name', current_sign[1] or '')
+        sig3 = data.get('signature_inspection2_name', current_sign[2] or '')
+        
+        logger.info(f"🖊️ Validando assinaturas RNC {rnc_id}:")
+        logger.info(f"   Qualidade: '{sig1}'")
+        logger.info(f"   Gerente: '{sig2}'")
+        logger.info(f"   Causador: '{sig3}'")
+        
+        new_sign = (sig1, sig2, sig3)
+        
+        # SEMPRE validar: pelo menos UMA assinatura FINAL deve ser válida
+        assinaturas_validas = []
+        
+        if sig1 and str(sig1).strip() and str(sig1).strip().upper() not in ['NOME', '']:
+            assinaturas_validas.append('Qualidade')
+        if sig2 and str(sig2).strip() and str(sig2).strip().upper() not in ['NOME', '']:
+            assinaturas_validas.append('Gerente')
+        if sig3 and str(sig3).strip() and str(sig3).strip().upper() not in ['NOME', '']:
+            assinaturas_validas.append('Causador')
+        
+        logger.info(f"   Assinaturas válidas: {assinaturas_validas}")
+        
+        # Bloquear se NENHUMA assinatura válida
+        if len(assinaturas_validas) == 0:
+            logger.warning(f"❌ Bloqueio: Nenhuma assinatura válida")
+            return jsonify({
+                'success': False, 
+                'message': 'Para salvar, é obrigatório preencher pelo menos uma assinatura válida (não pode estar vazia ou ser "NOME").'
+            }), 400
 
         disposition_usar = get_bool('disposition_usar')
         disposition_retrabalhar = get_bool('disposition_retrabalhar')
@@ -2199,6 +2501,7 @@ def update_rnc_api(rnc_id):
         
         # LOG DEBUG: Verificar valores recebidos do frontend
         logger.info(f"🔍 DEBUG UPDATE RNC {rnc_id} - VALORES ASSINATURAS CABEÇALHO:")
+        logger.info(f"   created_at recebido: '{data.get('created_at')}' (tipo: {type(data.get('created_at'))})")
         logger.info(f"   area_responsavel: '{data.get('area_responsavel')}' (atual: '{current.get('area_responsavel')}')")
         logger.info(f"   ass_responsavel: '{ass_responsavel}' (do payload: '{data.get('ass_responsavel')}')")
         logger.info(f"   inspetor: '{data.get('inspetor')}' (atual: '{current.get('inspetor')}')")
@@ -2218,10 +2521,67 @@ def update_rnc_api(rnc_id):
         logger.info(f"   responsavel: '{final_responsavel}'")
         logger.info(f"   causador_user_id: '{causador_user_id}'")
         
+        # Processar data de emissão (created_at) - SALVAR EM FORMATO BRASILEIRO
+        created_at_value = data.get('created_at')
+        if created_at_value and str(created_at_value).strip() not in ('', 'null', 'undefined'):
+            created_at_str = str(created_at_value).strip()
+            # Converter qualquer formato para DD/MM/YYYY (formato brasileiro)
+            try:
+                from datetime import datetime
+                if '/' in created_at_str:
+                    parts = created_at_str.split('/')
+                    if len(parts) == 3:
+                        if len(parts[0]) == 4:  # YYYY/MM/DD → DD/MM/YYYY
+                            created_at_str = f"{parts[2].zfill(2)}/{parts[1].zfill(2)}/{parts[0]}"
+                        # Se já está DD/MM/YYYY, manter
+                elif '-' in created_at_str:
+                    parts = created_at_str.split('-')
+                    if len(parts) == 3:
+                        if len(parts[0]) == 4:  # YYYY-MM-DD → DD/MM/YYYY
+                            created_at_str = f"{parts[2].zfill(2)}/{parts[1].zfill(2)}/{parts[0]}"
+                        else:  # DD-MM-YYYY → DD/MM/YYYY
+                            created_at_str = f"{parts[0].zfill(2)}/{parts[1].zfill(2)}/{parts[2]}"
+                logger.info(f"📅 Data convertida para formato BR: '{created_at_str}'")
+            except Exception as e:
+                logger.warning(f"Erro ao converter data: {e}")
+                created_at_str = created_at_value
+        else:
+            created_at_str = current.get('created_at', '')
+        
+        logger.info(f"📅 created_at final: '{created_at_str}'")
+        logger.info(f"📅 created_at atual no banco: '{current.get('created_at')}'")
+        
+        # DEBUG: Verificar valor de price recebido
+        price_value = data.get('price', 0) if data.get('price', None) is not None else (current.get('price') or 0)
+        logger.info(f"💰 PRICE DEBUG: recebido='{data.get('price')}' | atual_no_banco='{current.get('price')}' | valor_final='{price_value}'")
+        
+        # LÓGICA: Se usuário comum (não admin, não gerente) está respondendo,
+        # mudar status para "Aguardando Aprovação" para que a RNC saia da lista dele
+        # e só apareça para administradores/gerentes
+        requested_status = data.get('status', current.get('status', 'Pendente'))
+        
+        # Verificar se é usuário comum respondendo (não admin e não gerente)
+        is_common_user_replying = not has_admin and not is_manager_of_group
+        
+        # Se usuário comum está salvando e o status atual não é Finalizado
+        # e foi compartilhado com ele (causador), mudar para Aguardando Aprovação
+        if is_common_user_replying and is_shared_with_user and current.get('status') != 'Finalizado':
+            # Verificar se está realmente respondendo (preencheu campos de resposta)
+            has_response = bool(
+                data.get('action_rnc') or 
+                data.get('cause_rnc') or 
+                data.get('instruction_retrabalho') or
+                (new_sign[2] and str(new_sign[2]).strip() not in ('', 'NOME'))  # Assinatura do causador
+            )
+            if has_response:
+                requested_status = 'Aguardando Aprovação'
+                logger.info(f"📋 Usuário comum respondeu RNC {rnc_id} - Status alterado para 'Aguardando Aprovação'")
+        
+        brasilia_now = get_brasilia_timestamp()
         cursor.execute('''
             UPDATE rncs 
             SET title = ?, description = ?, equipment = ?, client = ?, 
-                priority = ?, status = ?, updated_at = CURRENT_TIMESTAMP,
+                priority = ?, status = ?, updated_at = ?,
                 assigned_user_id = ?,
                 price = ?,
                 price_note = COALESCE(?, price_note),
@@ -2236,7 +2596,8 @@ def update_rnc_api(rnc_id):
                 disposition_devolver_estoque = ?, disposition_devolver_fornecedor = ?,
                 inspection_aprovado = ?, inspection_reprovado = ?, inspection_ver_rnc = ?,
                 instruction_retrabalho = ?, cause_rnc = ?, action_rnc = ?,
-                causador_user_id = ?, ass_responsavel = ?
+                causador_user_id = ?, ass_responsavel = ?,
+                created_at = COALESCE(NULLIF(?, ''), created_at)
             WHERE id = ?
         ''', (
             new_title,
@@ -2244,9 +2605,10 @@ def update_rnc_api(rnc_id):
             data.get('equipment', current.get('equipment','')),
             data.get('client', current.get('client','')),
             data.get('priority', current.get('priority','Média')),
-            data.get('status', current.get('status','Pendente')),
+            requested_status,  # Usar o status calculado (pode ser 'Aguardando Aprovação')
+            brasilia_now,  # updated_at com horário de Brasília
             data.get('assigned_user_id', current.get('assigned_user_id')),
-            float(data.get('price') or current.get('price') or 0),
+            float(price_value),
             data.get('price_note', current.get('price_note','')),
             new_sign[0],
             new_sign[1],
@@ -2283,9 +2645,18 @@ def update_rnc_api(rnc_id):
             action_rnc,
             causador_user_id,
             ass_responsavel,
+            created_at_str,
             rnc_id
         ))
         affected_rows = cursor.rowcount
+        
+        # VERIFICAR SE A DATA FOI SALVA CORRETAMENTE
+        cursor.execute('SELECT created_at FROM rncs WHERE id = ?', (rnc_id,))
+        saved_date = cursor.fetchone()
+        if saved_date:
+            logger.info(f"📅 DATA SALVA NO BANCO: '{saved_date[0]}'")
+        else:
+            logger.warning(f"⚠️ Não foi possível verificar a data salva")
         
         # ATUALIZAR assigned_group_id se area_responsavel mudou
         if final_area_resp and final_area_resp != current.get('area_responsavel'):
@@ -2338,6 +2709,86 @@ def update_rnc_api(rnc_id):
             except Exception as e:
                 logger.error(f"❌ Erro ao atualizar distribuição da RNC: {e}")
         
+        # REDISTRIBUIR RNC se causador_user_id mudou
+        old_causador = current.get('causador_user_id')
+        if causador_user_id != old_causador:
+            try:
+                # Buscar assigned_group_id atual
+                cursor.execute('SELECT assigned_group_id FROM rncs WHERE id = ?', (rnc_id,))
+                group_row = cursor.fetchone()
+                current_group_id = group_row[0] if group_row else None
+                
+                if current_group_id:
+                    logger.info(f"🔄 CAUSADOR ALTERADO - REDISTRIBUINDO RNC {rnc_id}:")
+                    logger.info(f"   Causador antigo: {old_causador}")
+                    logger.info(f"   Causador novo: {causador_user_id}")
+                    logger.info(f"   Grupo: {current_group_id}")
+                    
+                    # Remover compartilhamentos antigos relacionados ao grupo
+                    cursor.execute('''
+                        DELETE FROM rnc_shares 
+                        WHERE rnc_id = ? 
+                        AND permission_level = 'assigned'
+                    ''', (rnc_id,))
+                    logger.info(f"   Compartilhamentos antigos removidos")
+                    
+                    # LÓGICA DE REDISTRIBUIÇÃO:
+                    # - Se causador_user_id está VAZIO → compartilhar com TODO o grupo
+                    # - Se causador_user_id está PREENCHIDO → compartilhar só com causador + gerentes
+                    
+                    if not causador_user_id:
+                        # MODO 1: Todo o grupo
+                        logger.info(f"   MODO: Causador VAZIO → Distribuir para TODO o grupo")
+                        users_in_group = get_users_by_group(current_group_id)
+                        for user in users_in_group:
+                            user_id = user[0]
+                            if user_id != session['user_id']:
+                                cursor.execute('''
+                                    INSERT OR IGNORE INTO rnc_shares 
+                                    (rnc_id, shared_by_user_id, shared_with_user_id, permission_level)
+                                    VALUES (?, ?, ?, 'assigned')
+                                ''', (rnc_id, session['user_id'], user_id))
+                        logger.info(f"   ✓ RNC compartilhada com {len(users_in_group)} usuários do grupo")
+                    else:
+                        # MODO 2: Causador específico + gerentes + Ronaldo
+                        logger.info(f"   MODO: Causador PREENCHIDO (ID: {causador_user_id}) → Distribuir para causador + gerentes")
+                        
+                        # Lista de usuários: causador + gerentes do grupo
+                        users_to_share = [int(causador_user_id)]
+                        
+                        # Buscar gerente e sub-gerente do grupo
+                        cursor.execute('''
+                            SELECT manager_user_id, sub_manager_user_id 
+                            FROM groups 
+                            WHERE id = ?
+                        ''', (current_group_id,))
+                        managers = cursor.fetchone()
+                        
+                        if managers:
+                            if managers[0]:  # Gerente principal
+                                users_to_share.append(int(managers[0]))
+                            if managers[1]:  # Sub-gerente
+                                users_to_share.append(int(managers[1]))
+                        
+                        # Adicionar Ronaldo (ID 11 - Valorista)
+                        ronaldo_id = 11
+                        if ronaldo_id not in users_to_share:
+                            users_to_share.append(ronaldo_id)
+                        
+                        # Compartilhar com cada usuário da lista
+                        for user_id in users_to_share:
+                            if user_id != session['user_id']:
+                                cursor.execute('''
+                                    INSERT OR IGNORE INTO rnc_shares 
+                                    (rnc_id, shared_by_user_id, shared_with_user_id, permission_level)
+                                    VALUES (?, ?, ?, 'assigned')
+                                ''', (rnc_id, session['user_id'], user_id))
+                        
+                        logger.info(f"   ✓ RNC compartilhada com {len(users_to_share)} usuários (causador + gerentes + Ronaldo)")
+                    
+            except Exception as e:
+                logger.error(f"❌ Erro ao redistribuir RNC após mudança de causador: {e}")
+        
         # LOG DEBUG: Verificar valores salvos no banco
         cursor.execute('''
             SELECT area_responsavel, ass_responsavel, inspetor, responsavel, causador_user_id, assigned_group_id 
@@ -2353,19 +2804,122 @@ def update_rnc_api(rnc_id):
             logger.info(f"   causador_user_id: {saved_values[4]}")
             logger.info(f"   assigned_group_id: {saved_values[5]}")
         
+        # MARCAR NOTIFICAÇÃO COMO RESPONDIDA SE CAUSADOR PREENCHEU/EDITOU CAUSA DA RNC
+        # Marca se:
+        # 1. O usuário é o causador (foi compartilhado com ele)
+        # 2. O cause_rnc está preenchido (não importa se já existia ou não)
+        # 3. Existe notificação pendente (is_responded = 0) para este usuário
+        new_cause_rnc = data.get('cause_rnc', '').strip()
+        old_cause_rnc = (current.get('cause_rnc') or '').strip()
+        
+        if is_shared_with_user and new_cause_rnc:
+            notification_id_responded = None
+            try:
+                # Buscar notificação pendente para este usuário e RNC
+                cursor_notif = conn.cursor()
+                cursor_notif.execute('''
+                    SELECT rnr.notification_id 
+                    FROM rnc_notification_recipients rnr
+                    JOIN rnc_change_notifications rcn ON rcn.id = rnr.notification_id
+                    WHERE rcn.rnc_id = ? 
+                    AND rnr.user_id = ? 
+                    AND (rnr.is_responded = 0 OR rnr.is_responded IS NULL)
+                    ORDER BY rcn.created_at DESC
+                    LIMIT 1
+                ''', (rnc_id, session['user_id']))
+                notif_row = cursor_notif.fetchone()
+                
+                if notif_row:
+                    notification_id_responded = notif_row[0]
+                    cursor_notif.execute('''
+                        UPDATE rnc_notification_recipients
+                        SET is_responded = 1, 
+                            response_text = ?,
+                            responded_at = CURRENT_TIMESTAMP
+                        WHERE notification_id = ? AND user_id = ?
+                    ''', (f'Causa preenchida: {new_cause_rnc[:100]}', notification_id_responded, session['user_id']))
+                    logger.info(f"✅ Notificação {notification_id_responded} marcada como respondida - causador preencheu causa da RNC {rnc_id}")
+                    
+                    # HISTÓRICO: Registrar resposta na tabela de histórico
+                    try:
+                        action_type = 'update' if old_cause_rnc else 'create'
+                        cursor_notif.execute('''
+                            INSERT INTO rnc_cause_response_history 
+                            (rnc_id, user_id, cause_text, action_type, previous_cause, notification_id)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                        ''', (rnc_id, session['user_id'], new_cause_rnc, action_type, old_cause_rnc or None, notification_id_responded))
+                        logger.info(f"📝 Histórico de resposta registrado para RNC {rnc_id}")
+                    except Exception as hist_err:
+                        logger.warning(f"⚠️ Erro ao registrar histórico: {hist_err}")
+                    
+                    # NOTIFICAR GERENTE: Buscar gerente do grupo e notificar
+                    try:
+                        cursor_notif.execute('SELECT assigned_group_id FROM rncs WHERE id = ?', (rnc_id,))
+                        group_row = cursor_notif.fetchone()
+                        if group_row and group_row[0]:
+                            group_id = group_row[0]
+                            # Buscar gerentes do grupo
+                            cursor_notif.execute('''
+                                SELECT user_id FROM group_managers WHERE group_id = ?
+                                UNION
+                                SELECT manager_user_id FROM groups WHERE id = ? AND manager_user_id IS NOT NULL
+                                UNION
+                                SELECT sub_manager_user_id FROM groups WHERE id = ? AND sub_manager_user_id IS NOT NULL
+                            ''', (group_id, group_id, group_id))
+                            managers = cursor_notif.fetchall()
+                            
+                            # Buscar nome do causador
+                            cursor_notif.execute('SELECT name FROM users WHERE id = ?', (session['user_id'],))
+                            causador_row = cursor_notif.fetchone()
+                            causador_name = causador_row[0] if causador_row else 'Usuário'
+                            
+                            # Buscar número da RNC
+                            cursor_notif.execute('SELECT rnc_number FROM rncs WHERE id = ?', (rnc_id,))
+                            rnc_row = cursor_notif.fetchone()
+                            rnc_number = rnc_row[0] if rnc_row else str(rnc_id)
+                            
+                            # Criar notificação para cada gerente
+                            for manager in managers:
+                                manager_id = manager[0]
+                                if manager_id and manager_id != session['user_id']:
+                                    # Inserir notificação na tabela notifications (se existir)
+                                    try:
+                                        cursor_notif.execute('''
+                                            INSERT INTO notifications (user_id, type, title, message, rnc_id, is_read, created_at)
+                                            VALUES (?, 'cause_response', ?, ?, ?, 0, CURRENT_TIMESTAMP)
+                                        ''', (
+                                            manager_id,
+                                            f'Resposta de Causa - RNC #{rnc_number}',
+                                            f'{causador_name} respondeu a causa da RNC #{rnc_number}',
+                                            rnc_id
+                                        ))
+                                        logger.info(f"🔔 Notificação enviada para gerente {manager_id} sobre resposta da RNC {rnc_id}")
+                                    except Exception as notif_err:
+                                        logger.warning(f"⚠️ Erro ao notificar gerente {manager_id}: {notif_err}")
+                    except Exception as mgr_err:
+                        logger.warning(f"⚠️ Erro ao buscar gerentes para notificação: {mgr_err}")
+                else:
+                    logger.info(f"ℹ️ Nenhuma notificação pendente encontrada para RNC {rnc_id} e usuário {session['user_id']}")
+            except Exception as e:
+                logger.error(f"❌ Erro ao marcar notificação como respondida: {e}")
+        
         conn.commit()
         conn.close()
 
+        logger.info(f"🗑️ Limpando cache após atualizar RNC {rnc_id}")
         clear_rnc_cache()
+        logger.info(f"✅ Cache limpo com sucesso")
+        
         try:
             keys_to_remove = []
             for key in list(query_cache.keys()):
                 if key.startswith('rncs_list_') or key.startswith('charts_'):
                     keys_to_remove.append(key)
+            logger.info(f"🗑️ Removendo {len(keys_to_remove)} chaves do cache local")
             for key in keys_to_remove:
                 del query_cache[key]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Erro ao limpar cache local: {e}")
         
         # ============================================
         # ENVIO DE NOTIFICAÇÕES DE ATUALIZAÇÃO (SocketIO)
@@ -2376,29 +2930,33 @@ def update_rnc_api(rnc_id):
             
             if socketio:
                 # Buscar informações da RNC e do editor
-                conn_notify = sqlite3.connect(DB_PATH)
-                cursor_notify = conn_notify.cursor()
-                
-                cursor_notify.execute('SELECT name FROM users WHERE id = ?', (session['user_id'],))
-                editor_info = cursor_notify.fetchone()
-                editor_name = editor_info[0] if editor_info else 'Usuário'
-                
-                cursor_notify.execute('SELECT rnc_number, title FROM rncs WHERE id = ?', (rnc_id,))
-                rnc_info = cursor_notify.fetchone()
-                rnc_number = rnc_info[0] if rnc_info else f'RNC-{rnc_id}'
-                rnc_title = rnc_info[1] if rnc_info else 'RNC'
-                
-                # Buscar todos os usuários interessados (criador, compartilhados, atribuídos)
-                cursor_notify.execute('''
-                    SELECT DISTINCT user_id FROM rncs WHERE id = ?
-                    UNION
-                    SELECT DISTINCT shared_with_user_id FROM rnc_shares WHERE rnc_id = ?
-                    UNION
-                    SELECT DISTINCT assigned_user_id FROM rncs WHERE id = ? AND assigned_user_id IS NOT NULL
-                ''', (rnc_id, rnc_id, rnc_id))
-                
-                interested_users = [row[0] for row in cursor_notify.fetchall()]
-                conn_notify.close()
+                conn_notify = None
+                try:
+                    conn_notify = get_db_connection(timeout=5)
+                    cursor_notify = conn_notify.cursor()
+                    
+                    cursor_notify.execute('SELECT name FROM users WHERE id = ?', (session['user_id'],))
+                    editor_info = cursor_notify.fetchone()
+                    editor_name = editor_info[0] if editor_info else 'Usuário'
+                    
+                    cursor_notify.execute('SELECT rnc_number, title FROM rncs WHERE id = ?', (rnc_id,))
+                    rnc_info = cursor_notify.fetchone()
+                    rnc_number = rnc_info[0] if rnc_info else f'RNC-{rnc_id}'
+                    rnc_title = rnc_info[1] if rnc_info else 'RNC'
+                    
+                    # Buscar todos os usuários interessados (criador, compartilhados, atribuídos)
+                    cursor_notify.execute('''
+                        SELECT DISTINCT user_id FROM rncs WHERE id = ?
+                        UNION
+                        SELECT DISTINCT shared_with_user_id FROM rnc_shares WHERE rnc_id = ?
+                        UNION
+                        SELECT DISTINCT assigned_user_id FROM rncs WHERE id = ? AND assigned_user_id IS NOT NULL
+                    ''', (rnc_id, rnc_id, rnc_id))
+                    
+                    interested_users = [row[0] for row in cursor_notify.fetchall()]
+                finally:
+                    if conn_notify:
+                        conn_notify.close()
                 
                 # Enviar notificação para cada usuário interessado (exceto o editor)
                 for user_id in interested_users:
@@ -2428,6 +2986,20 @@ def update_rnc_api(rnc_id):
         except Exception as e:
             logger.error(f" Erro ao enviar notificação de atualização: {e}")
         
+        # Log de auditoria
+        try:
+            from services.audit import log_rnc_action
+            log_rnc_action(
+                session['user_id'], session.get('user_name'), 'RNC_UPDATE',
+                rnc_id, request.remote_addr, f'Status: {requested_status}'
+            )
+        except Exception:
+            pass
+        
+        # NÃO marcar pendências automaticamente ao salvar
+        # A pendência só é marcada como respondida quando o causador preenche cause_rnc
+        # (lógica implementada acima, antes do conn.commit())
+        
         return jsonify({'success': True, 'message': 'RNC atualizado com sucesso!', 'affected_rows': affected_rows})
     except Exception as e:
         logger.error(f"Erro ao atualizar RNC {rnc_id}: {e}")
@@ -2442,7 +3014,7 @@ def finalize_rnc(rnc_id):
     try:
         from services.permissions import has_permission
         from services.cache import clear_rnc_cache
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute('SELECT * FROM rncs WHERE id = ? AND is_deleted = 0', (rnc_id,))
@@ -2489,12 +3061,15 @@ def finalize_rnc(rnc_id):
         if not has_disposition:
             missing_fields.append('Disposicao do Material (selecione ao menos uma opcao)')
         
-        # 3. Assinaturas obrigatorias (nome e data)
-        if not rnc_dict.get('signature_inspection_name') or str(rnc_dict.get('signature_inspection_name', '')).strip() == '':
-            missing_fields.append('Assinatura Inspecao - Nome')
+        # 3. Assinaturas obrigatórias (TODAS as 3 devem estar preenchidas)
+        if not rnc_dict.get('signature_inspection_name') or str(rnc_dict.get('signature_inspection_name', '')).strip() == '' or str(rnc_dict.get('signature_inspection_name', '')).strip().upper() == 'NOME':
+            missing_fields.append('VISTO - Qualidade')
         
-        if not rnc_dict.get('signature_inspection_date') or str(rnc_dict.get('signature_inspection_date', '')).strip() == '':
-            missing_fields.append('Assinatura Inspecao - Data')
+        if not rnc_dict.get('signature_engineering_name') or str(rnc_dict.get('signature_engineering_name', '')).strip() == '' or str(rnc_dict.get('signature_engineering_name', '')).strip().upper() == 'NOME':
+            missing_fields.append('VISTO - Gerente do Setor')
+        
+        if not rnc_dict.get('signature_inspection2_name') or str(rnc_dict.get('signature_inspection2_name', '')).strip() == '' or str(rnc_dict.get('signature_inspection2_name', '')).strip().upper() == 'NOME':
+            missing_fields.append('VISTO - Causador')
         
         # Se houver campos faltando, retornar erro com lista
         if missing_fields:
@@ -2520,20 +3095,87 @@ def finalize_rnc(rnc_id):
             return jsonify({'success': False, 'message': 'Apenas o criador do RNC pode finalizá-lo'}), 403
 
         # Finalizar RNC
+        brasilia_now = get_brasilia_timestamp()
         cursor.execute('''
             UPDATE rncs 
-            SET status = 'Finalizado', finalized_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            SET status = 'Finalizado', finalized_at = ?, updated_at = ?
             WHERE id = ?
-        ''', (rnc_id,))
+        ''', (brasilia_now, brasilia_now, rnc_id))
         if cursor.rowcount == 0:
             conn.close()
             return jsonify({'success': False, 'message': 'Erro ao finalizar RNC'}), 500
         conn.commit()
         conn.close()
         clear_rnc_cache()
+        
+        # Log de auditoria - finalização de RNC
+        try:
+            from services.audit import log_rnc_action
+            log_rnc_action(
+                session.get('user_id'), session.get('user_name'), 'RNC_FINALIZE',
+                rnc_id, request.remote_addr, f'RNC #{rnc_dict.get("rnc_number")} finalizada'
+            )
+        except Exception:
+            pass
+        
         return jsonify({'success': True, 'message': 'RNC finalizado com sucesso!'})
     except Exception as e:
         logger.error(f"Erro ao finalizar RNC: {e}")
+        return jsonify({'success': False, 'message': f'Erro interno: {str(e)}'}), 500
+
+
+@rnc.route('/api/rnc/<int:rnc_id>/reopen', methods=['POST'])
+@csrf_protect()
+def reopen_rnc_api(rnc_id):
+    """API para reabrir RNC finalizada (volta para status Pendente)"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Usuário não autenticado'}), 401
+    
+    try:
+        from services.cache import clear_rnc_cache
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Verificar se o RNC existe e está finalizado
+        cursor.execute('SELECT id, status FROM rncs WHERE id = ? AND is_deleted = 0', (rnc_id,))
+        rnc = cursor.fetchone()
+        
+        if not rnc:
+            conn.close()
+            return jsonify({'success': False, 'message': 'RNC não encontrado'}), 404
+        
+        if rnc[1] != 'Finalizado':
+            conn.close()
+            return jsonify({'success': False, 'message': 'RNC não está finalizada'}), 400
+        
+        # Verificar se o usuário é admin
+        user_id = session['user_id']
+        cursor.execute('SELECT role FROM users WHERE id = ?', (user_id,))
+        user = cursor.fetchone()
+        
+        if not user or user[0] != 'admin':
+            conn.close()
+            return jsonify({'success': False, 'message': 'Apenas administradores podem reabrir RNCs'}), 403
+        
+        # Reabrir RNC (status volta para Pendente, limpa finalized_at)
+        cursor.execute('''
+            UPDATE rncs 
+            SET status = 'Pendente', finalized_at = NULL, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (rnc_id,))
+        
+        if cursor.rowcount == 0:
+            conn.close()
+            return jsonify({'success': False, 'message': 'Erro ao reabrir RNC'}), 500
+        
+        conn.commit()
+        conn.close()
+        clear_rnc_cache()
+        
+        return jsonify({'success': True, 'message': 'RNC reaberta com sucesso!'})
+        
+    except Exception as e:
+        logger.error(f"Erro ao reabrir RNC: {e}")
         return jsonify({'success': False, 'message': f'Erro interno: {str(e)}'}), 500
 
 
@@ -2545,7 +3187,7 @@ def reply_rnc_api(rnc_id):
     try:
         from services.permissions import has_permission
         from services.cache import clear_rnc_cache
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('SELECT id, user_id, assigned_user_id, status FROM rncs WHERE id = ? AND is_deleted = 0', (rnc_id,))
         rnc = cursor.fetchone()
@@ -2584,6 +3226,19 @@ def reply_rnc_api(rnc_id):
         conn.commit()
         conn.close()
         clear_rnc_cache()
+        
+        # NÃO marcar pendências automaticamente aqui
+        # A pendência só é marcada como respondida quando o causador preenche cause_rnc
+        
+        # Log de auditoria
+        try:
+            from services.audit import log_rnc_action
+            log_rnc_action(
+                user_id, session.get('user_name'), 'RNC_REPLY',
+                rnc_id, request.remote_addr, 'Resposta enviada'
+            )
+        except Exception:
+            pass
         return jsonify({'success': True, 'message': 'RNC reenviada com sucesso'})
     except Exception as e:
         try:
@@ -2596,18 +3251,20 @@ def reply_rnc_api(rnc_id):
 @rnc.route('/api/rnc/<int:rnc_id>/delete', methods=['DELETE'])
 @csrf_protect()
 def delete_rnc(rnc_id):
+    """Mover RNC para lixeira (soft delete)"""
     if 'user_id' not in session:
         return jsonify({'success': False, 'message': 'Usuário não autenticado'}), 401
     try:
         from services.cache import cache_lock, query_cache
         from services.permissions import has_permission
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('SELECT id, user_id FROM rncs WHERE id = ?', (rnc_id,))
         rnc = cursor.fetchone()
         if not rnc:
             conn.close()
             return jsonify({'success': False, 'message': 'RNC não encontrado'}), 404
+        
         # Permissão: apenas criador ou admin pode deletar
         creator_id = rnc[1]
         user_id = session['user_id']
@@ -2616,17 +3273,43 @@ def delete_rnc(rnc_id):
         if not (is_creator or is_admin):
             conn.close()
             return jsonify({'success': False, 'message': 'Sem permissão para excluir este RNC'}), 403
-        cursor.execute('DELETE FROM rncs WHERE id = ?', (rnc_id,))
-        cursor.execute('DELETE FROM rnc_shares WHERE rnc_id = ?', (rnc_id,))
-        cursor.execute('DELETE FROM chat_messages WHERE rnc_id = ?', (rnc_id,))
+        
+        # Soft delete: marcar como deletado
+        cursor.execute('''
+            UPDATE rncs 
+            SET is_deleted = 1, deleted_at = CURRENT_TIMESTAMP 
+            WHERE id = ?
+        ''', (rnc_id,))
         conn.commit()
         conn.close()
+        
+        # Limpar TODOS os caches relacionados
         with cache_lock:
-            keys_to_remove = [key for key in list(query_cache.keys()) if 'rncs_list_' in key or 'rnc_' in key or 'charts_' in key]
+            keys_to_remove = [key for key in list(query_cache.keys()) 
+                            if 'rncs_list_' in key or 'rnc_' in key or 'charts_' in key 
+                            or 'indicators_' in key or 'finalized' in key]
             for key in keys_to_remove:
                 del query_cache[key]
-        logger.info(f"RNC {rnc_id} excluído definitivamente por usuário {session['user_id']}")
-        return jsonify({'success': True, 'message': 'RNC excluído definitivamente.', 'cache_cleared': True})
+        
+        # Também limpar cache do RNC específico
+        try:
+            from services.cache import clear_rnc_cache
+            clear_rnc_cache()
+        except:
+            pass
+        
+        # Log de auditoria - exclusão de RNC
+        try:
+            from services.audit import log_rnc_action
+            log_rnc_action(
+                session.get('user_id'), session.get('user_name'), 'RNC_DELETE',
+                rnc_id, request.remote_addr, f'RNC #{rnc_id} movida para lixeira'
+            )
+        except Exception:
+            pass
+        
+        logger.info(f"RNC {rnc_id} movido para lixeira por usuário {session['user_id']}, cache limpo")
+        return jsonify({'success': True, 'message': 'RNC movido para lixeira.', 'cache_cleared': True})
     except Exception as e:
         logger.error(f"Erro ao deletar RNC: {e}")
         return jsonify({'success': False, 'message': f'Erro interno: {str(e)}'}), 500
@@ -2636,8 +3319,8 @@ def delete_rnc(rnc_id):
 # CSRF desabilitado para permitir AJAX com credentials na porta 5001
 # @csrf_protect()
 def permanent_delete_rnc(rnc_id):
-    """Apagar RNC permanentemente do banco de dados (ADMIN ONLY)"""
-    logger.info(f"🗑️ Delete request - RNC ID: {rnc_id}, Method: {request.method}, Session: {session.get('user_id', 'NONE')}")
+    """Excluir RNC permanentemente da lixeira (admin only)"""
+    logger.info(f"🗑️ Permanent delete request - RNC ID: {rnc_id}, Method: {request.method}, Session: {session.get('user_id', 'NONE')}")
     
     # Handle preflight OPTIONS request
     if request.method == 'OPTIONS':
@@ -2647,7 +3330,7 @@ def permanent_delete_rnc(rnc_id):
         return response, 200
     
     if 'user_id' not in session:
-        logger.warning(f"❌ Delete NEGADO - Sem sessão para RNC {rnc_id}")
+        logger.warning(f"❌ Permanent delete NEGADO - Sem sessão para RNC {rnc_id}")
         return jsonify({'success': False, 'message': 'Usuário não autenticado'}), 401
     
     try:
@@ -2657,36 +3340,21 @@ def permanent_delete_rnc(rnc_id):
         user_id = session['user_id']
         
         # Verificar permissão de admin
-        has_perm = has_permission(user_id, 'permanent_delete_rnc')
-        is_admin = has_permission(user_id, 'admin_access')
+        if not has_permission(user_id, 'admin_access'):
+            return jsonify({'success': False, 'message': 'Acesso negado'}), 403
         
-        if not (has_perm or is_admin):
-            return jsonify({
-                'success': False, 
-                'message': 'Sem permissão. Apenas administradores podem apagar RNCs permanentemente.'
-            }), 403
-        
-        conn = sqlite3.connect(DB_PATH)
+        conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Verificar se RNC existe e está finalizado
-        cursor.execute('SELECT id, rnc_number, status FROM rncs WHERE id = ?', (rnc_id,))
+        # Verificar se RNC está na lixeira
+        cursor.execute('SELECT id, rnc_number FROM rncs WHERE id = ? AND is_deleted = 1', (rnc_id,))
         rnc = cursor.fetchone()
         
         if not rnc:
             conn.close()
-            return jsonify({'success': False, 'message': 'RNC não encontrado'}), 404
+            return jsonify({'success': False, 'message': 'RNC não encontrado na lixeira'}), 404
         
         rnc_number = rnc[1]
-        rnc_status = rnc[2]
-        
-        # Apenas permitir apagar RNCs finalizadas
-        if rnc_status != 'Finalizado':
-            conn.close()
-            return jsonify({
-                'success': False, 
-                'message': 'Apenas RNCs finalizadas podem ser apagadas permanentemente'
-            }), 400
         
         # Apagar permanentemente do banco
         cursor.execute('DELETE FROM rncs WHERE id = ?', (rnc_id,))
@@ -2703,11 +3371,11 @@ def permanent_delete_rnc(rnc_id):
             for key in keys_to_remove:
                 del query_cache[key]
         
-        logger.info(f"RNC {rnc_number} (ID: {rnc_id}) APAGADO PERMANENTEMENTE por admin {user_id}")
+        logger.info(f"RNC {rnc_number} (ID: {rnc_id}) APAGADO PERMANENTEMENTE da lixeira por admin {user_id}")
         
         return jsonify({
             'success': True, 
-            'message': f'RNC {rnc_number} apagado permanentemente do banco de dados.'
+            'message': f'RNC {rnc_number} excluído permanentemente'
         })
         
     except Exception as e:
@@ -2767,7 +3435,7 @@ def renumber_rnc_v2(rnc_id):
             conn = None
             try:
                 # Conectar com timeout maior e WAL mode
-                conn = sqlite3.connect(DB_PATH, timeout=30.0, isolation_level=None)
+                conn = get_db_connection()
                 conn.execute("PRAGMA journal_mode=WAL")
                 conn.execute("PRAGMA busy_timeout=10000")
                 cursor = conn.cursor()
@@ -2816,7 +3484,7 @@ def renumber_rnc_v2(rnc_id):
                             continue
                         return jsonify({'success': False, 'message': 'Falha ao ajustar schema para duplicatas'}), 500
                     try:
-                        conn = sqlite3.connect(DB_PATH, timeout=30.0, isolation_level=None)
+                        conn = get_db_connection()
                         conn.execute("PRAGMA journal_mode=WAL")
                         conn.execute("PRAGMA busy_timeout=10000")
                         cur2 = conn.cursor()
@@ -2915,7 +3583,7 @@ def share_rnc(rnc_id):
         data = request.get_json()
         shared_with_user_ids = data.get('shared_with_user_ids', [])
         permission_level = data.get('permission_level', 'view')
-        cursor = sqlite3.connect(DB_PATH).cursor()
+        cursor = get_db_connection().cursor()
         cursor.execute('SELECT * FROM rncs WHERE id = ?', (rnc_id,))
         rnc_data = cursor.fetchone()
         cursor.connection.close()
@@ -2933,6 +3601,15 @@ def share_rnc(rnc_id):
             if share_rnc_with_user(rnc_id, session['user_id'], user_id, permission_level):
                 success_count += 1
         if success_count > 0:
+            # Log de auditoria - compartilhamento de RNC
+            try:
+                from services.audit import log_rnc_action
+                log_rnc_action(
+                    session.get('user_id'), session.get('user_name'), 'RNC_SHARE',
+                    rnc_id, request.remote_addr, f'Compartilhada com {success_count} usuário(s)'
+                )
+            except Exception:
+                pass
             return jsonify({'success': True, 'message': f'RNC compartilhada com {success_count} usuário(s) com sucesso!'})
         else:
             return jsonify({'success': False, 'message': 'Erro ao compartilhar RNC'}), 500
@@ -3303,7 +3980,7 @@ def list_valores_hora():
         if 'user_id' not in session:
             return jsonify({'success': False, 'message': 'Não autenticado'}), 401
         
-        conn = sqlite3.connect(DATABASE_PATH)
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Buscar todos os valores ordenados por setor e código
@@ -3373,7 +4050,7 @@ def save_valor_hora():
         except Exception:
             return jsonify({'success': False, 'message': 'Valor por hora inválido'}), 400
         
-        conn = sqlite3.connect(DATABASE_PATH)
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verificar se código já existe
@@ -3420,7 +4097,7 @@ def update_valor_hora(valor_id):
         
         data = request.get_json(silent=True) or {}
         
-        conn = sqlite3.connect(DATABASE_PATH)
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verificar se valor existe
@@ -3482,7 +4159,7 @@ def delete_valor_hora(valor_id):
         if 'user_id' not in session:
             return jsonify({'success': False, 'message': 'Não autenticado'}), 401
         
-        conn = sqlite3.connect(DATABASE_PATH)
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Verificar se valor existe
@@ -3517,7 +4194,7 @@ def list_setores_valores():
         if 'user_id' not in session:
             return jsonify({'success': False, 'message': 'Não autenticado'}), 401
         
-        conn = sqlite3.connect(DATABASE_PATH)
+        conn = get_db_connection()
         cursor = conn.cursor()
         
         # Buscar setores únicos
@@ -3545,3 +4222,209 @@ def list_setores_valores():
     except Exception as e:
         logger.error(f"Erro ao listar setores: {e}")
         return jsonify({'success': False, 'message': 'Erro ao buscar setores'}), 500
+
+@rnc.route('/api/dashboard/rncs')
+def dashboard_rncs():
+    """Endpoint otimizado para o gráfico do dashboard - retorna apenas dados essenciais"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Usuário não autenticado'}), 401
+    
+    conn = None
+    try:
+        from services.db import get_db_connection
+        
+        status_filter = request.args.get('status', 'all')  # 'all', 'active', 'finalized'
+        limit = request.args.get('limit', '999999')
+        try:
+            limit = int(limit)  # Sem limite máximo - carregar tudo
+        except:
+            limit = 999999
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Query otimizada retornando apenas campos necessários
+        where_clauses = ["(r.is_deleted = 0 OR r.is_deleted IS NULL)"]
+        
+        if status_filter == 'active':
+            where_clauses.append("r.status IN ('Pendente', 'Em Andamento', 'Aguardando', 'Em Análise', 'Cancelado')")
+        elif status_filter == 'finalized':
+            where_clauses.append("r.status = 'Finalizado'")
+        # 'all' não adiciona filtro de status
+        
+        query = f"""
+            SELECT 
+                r.id,
+                r.rnc_number,
+                r.status,
+                r.created_at,
+                r.finalized_at,
+                COALESCE(r.area_responsavel, r.setor, 'Não informado') as setor_responsavel
+            FROM rncs r
+            WHERE {' AND '.join(where_clauses)}
+            ORDER BY r.id DESC
+            LIMIT ?
+        """
+        
+        cursor.execute(query, (limit,))
+        rows = cursor.fetchall()
+        
+        rncs = []
+        for row in rows:
+            rncs.append({
+                'id': row[0],
+                'rnc_number': row[1],
+                'status': row[2],
+                'created_at': row[3],
+                'finalized_at': row[4],
+                'setor_responsavel': row[5]
+            })
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'rncs': rncs,
+            'total': len(rncs)
+        })
+        
+    except Exception as e:
+        logger.error(f"Erro ao buscar RNCs para dashboard: {e}")
+        if conn:
+            conn.close()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@rnc.route('/api/rnc/check-drawing', methods=['POST'])
+def check_duplicate_drawing():
+    """Verifica se já existe RNC com o mesmo número de desenho"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Não autenticado'}), 401
+    
+    try:
+        from services.db import get_db_connection, return_db_connection
+        
+        data = request.get_json()
+        drawing_number = data.get('drawing', '').strip()
+        
+        if not drawing_number:
+            return jsonify({'success': True, 'exists': False})
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Buscar RNCs com o mesmo número de desenho
+        cursor.execute("""
+            SELECT id, rnc_number, title, status, created_at
+            FROM rncs
+            WHERE LOWER(TRIM(drawing)) = LOWER(TRIM(?))
+            AND is_deleted = 0
+            ORDER BY created_at DESC
+            LIMIT 5
+        """, (drawing_number,))
+        
+        results = cursor.fetchall()
+        return_db_connection(conn)
+        
+        if results:
+            rncs_found = [
+                {
+                    'id': r[0],
+                    'rnc_number': r[1],
+                    'title': r[2],
+                    'status': r[3],
+                    'created_at': r[4]
+                }
+                for r in results
+            ]
+            return jsonify({
+                'success': True,
+                'exists': True,
+                'count': len(results),
+                'rncs': rncs_found
+            })
+        else:
+            return jsonify({
+                'success': True,
+                'exists': False
+            })
+            
+    except Exception as e:
+        logger.error(f"Erro ao verificar desenho duplicado: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@rnc.route('/api/rnc/trash/list', methods=['GET'])
+def list_trash():
+    """Listar RNCs na lixeira (admin only)"""
+    if 'user_id' not in session:
+        logger.warning("Tentativa de acesso à lixeira sem autenticação")
+        return jsonify({'success': False, 'message': 'Usuário não autenticado'}), 401
+    try:
+        from services.permissions import has_permission
+        user_id = session['user_id']
+        logger.info(f"Usuário {user_id} tentando acessar lixeira")
+        
+        if not has_permission(user_id, 'admin_access'):
+            logger.warning(f"Usuário {user_id} sem permissão de admin para acessar lixeira")
+            return jsonify({'success': False, 'message': 'Acesso negado'}), 403
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT id, rnc_number, title, deleted_at, user_id 
+            FROM rncs 
+            WHERE is_deleted = 1 
+            ORDER BY deleted_at DESC
+        ''')
+        rows = cursor.fetchall()
+        conn.close()
+        
+        logger.info(f"Encontrados {len(rows)} itens na lixeira")
+        
+        trash_items = []
+        for row in rows:
+            trash_items.append({
+                'id': row[0],
+                'numero_rnc': row[1],
+                'titulo': row[2],
+                'deleted_at': row[3],
+                'user_id': row[4]
+            })
+        return jsonify({'success': True, 'items': trash_items})
+    except Exception as e:
+        logger.error(f"Erro ao listar lixeira: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@rnc.route('/api/rnc/<int:rnc_id>/restore', methods=['POST'])
+@csrf_protect()
+def restore_rnc(rnc_id):
+    """Restaurar RNC da lixeira (admin only)"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Usuário não autenticado'}), 401
+    try:
+        from services.permissions import has_permission
+        from services.cache import cache_lock, query_cache
+        user_id = session['user_id']
+        if not has_permission(user_id, 'admin_access'):
+            return jsonify({'success': False, 'message': 'Acesso negado'}), 403
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT id FROM rncs WHERE id = ? AND is_deleted = 1', (rnc_id,))
+        if not cursor.fetchone():
+            conn.close()
+            return jsonify({'success': False, 'message': 'RNC não encontrado na lixeira'}), 404
+        cursor.execute('''
+            UPDATE rncs 
+            SET is_deleted = 0, deleted_at = NULL 
+            WHERE id = ?
+        ''', (rnc_id,))
+        conn.commit()
+        conn.close()
+        with cache_lock:
+            keys_to_remove = [key for key in list(query_cache.keys()) if 'rncs_list_' in key or 'rnc_' in key or 'charts_' in key]
+            for key in keys_to_remove:
+                del query_cache[key]
+        logger.info(f"RNC {rnc_id} restaurado da lixeira por usuário {user_id}")
+        return jsonify({'success': True, 'message': 'RNC restaurado com sucesso'})
+    except Exception as e:
+        logger.error(f"Erro ao restaurar RNC: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500

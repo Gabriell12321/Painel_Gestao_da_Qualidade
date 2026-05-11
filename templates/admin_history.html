@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Histórico de Ações - IPPEL</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Roboto', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .header h1 {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            font-size: 1.8rem;
+            color: #00b4d8;
+        }
+        
+        .header h1 i {
+            color: #ffc107;
+        }
+        
+        .btn-back {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #0077b6, #00b4d8);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        
+        .btn-back:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 180, 216, 0.4);
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: rgba(255, 255, 255, 0.08);
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .stat-card i {
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+        
+        .stat-card .value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #00b4d8;
+        }
+        
+        .stat-card .label {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.9rem;
+        }
+        
+        .filters-section {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+        
+        .filters-section h3 {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .filters-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+        }
+        
+        .filter-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 0.85rem;
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .filter-group input,
+        .filter-group select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            font-size: 0.9rem;
+        }
+        
+        .filter-group input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+        
+        .filter-group select option {
+            background: #1a1a2e;
+            color: white;
+        }
+        
+        .filter-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .btn-filter {
+            padding: 10px 25px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        
+        .btn-apply {
+            background: linear-gradient(135deg, #0077b6, #00b4d8);
+            color: white;
+        }
+        
+        .btn-clear {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+        }
+        
+        .btn-filter:hover {
+            transform: translateY(-2px);
+        }
+        
+        .table-container {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        
+        .table-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .table-header h3 {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .total-badge {
+            background: #0077b6;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        th {
+            background: rgba(0, 119, 182, 0.3);
+            padding: 15px;
+            text-align: left;
+            font-weight: 500;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            font-size: 0.9rem;
+        }
+        
+        tr:hover {
+            background: rgba(255, 255, 255, 0.03);
+        }
+        
+        .event-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 15px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        
+        .event-login { background: rgba(46, 204, 113, 0.2); color: #2ecc71; }
+        .event-logout { background: rgba(241, 196, 15, 0.2); color: #f1c40f; }
+        .event-rnc_view { background: rgba(52, 152, 219, 0.2); color: #3498db; }
+        .event-rnc_reply { background: rgba(155, 89, 182, 0.2); color: #9b59b6; }
+        .event-rnc_update { background: rgba(230, 126, 34, 0.2); color: #e67e22; }
+        .event-rnc_create { background: rgba(0, 180, 216, 0.2); color: #00b4d8; }
+        .event-chat_message { background: rgba(26, 188, 156, 0.2); color: #1abc9c; }
+        .event-default { background: rgba(149, 165, 166, 0.2); color: #95a5a6; }
+        
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #0077b6, #00b4d8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 500;
+            font-size: 0.8rem;
+        }
+        
+        .ip-address {
+            font-family: monospace;
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.6);
+        }
+        
+        .details-cell {
+            max-width: 300px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .timestamp {
+            white-space: nowrap;
+            font-size: 0.85rem;
+        }
+        
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            padding: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .pagination a,
+        .pagination span {
+            padding: 8px 15px;
+            border-radius: 8px;
+            text-decoration: none;
+            color: white;
+            transition: all 0.3s;
+        }
+        
+        .pagination a {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .pagination a:hover {
+            background: rgba(0, 180, 216, 0.3);
+        }
+        
+        .pagination .current {
+            background: #0077b6;
+        }
+        
+        .pagination .disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+        
+        .empty-state i {
+            font-size: 4rem;
+            margin-bottom: 20px;
+        }
+        
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                gap: 15px;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            table {
+                display: block;
+                overflow-x: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>
+                <i class="fas fa-history"></i>
+                Histórico de Ações
+            </h1>
+            <a href="/dashboard" class="btn-back">
+                <i class="fas fa-arrow-left"></i>
+                Voltar ao Dashboard
+            </a>
+        </div>
+        
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card">
+                <i class="fas fa-chart-line" style="color: #00b4d8;"></i>
+                <div class="value" id="statTotalEvents">-</div>
+                <div class="label">Total de Eventos</div>
+            </div>
+            <div class="stat-card">
+                <i class="fas fa-calendar-day" style="color: #2ecc71;"></i>
+                <div class="value" id="statEventsToday">-</div>
+                <div class="label">Eventos Hoje</div>
+            </div>
+            <div class="stat-card">
+                <i class="fas fa-sign-in-alt" style="color: #f1c40f;"></i>
+                <div class="value" id="statLoginsToday">-</div>
+                <div class="label">Logins Hoje</div>
+            </div>
+            <div class="stat-card">
+                <i class="fas fa-users" style="color: #9b59b6;"></i>
+                <div class="value" id="statActiveUsers">-</div>
+                <div class="label">Usuários Ativos Hoje</div>
+            </div>
+        </div>
+        
+        <div class="filters-section">
+            <h3><i class="fas fa-filter"></i> Filtros</h3>
+            <form id="filterForm" method="GET">
+                <div class="filters-grid">
+                    <div class="filter-group">
+                        <label>Usuário</label>
+                        <input type="text" name="user" placeholder="Nome do usuário" value="{{ filters.user }}">
+                    </div>
+                    <div class="filter-group">
+                        <label>Tipo de Evento</label>
+                        <select name="event">
+                            <option value="">Todos</option>
+                            {% for key, value in event_types.items() %}
+                            <option value="{{ key }}" {% if filters.event == key %}selected{% endif %}>{{ value }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Tipo de Alvo</label>
+                        <select name="target">
+                            <option value="">Todos</option>
+                            <option value="rnc" {% if filters.target == 'rnc' %}selected{% endif %}>RNC</option>
+                            <option value="user" {% if filters.target == 'user' %}selected{% endif %}>Usuário</option>
+                            <option value="chat" {% if filters.target == 'chat' %}selected{% endif %}>Chat</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Data Inicial</label>
+                        <input type="date" name="from" value="{{ filters.from }}">
+                    </div>
+                    <div class="filter-group">
+                        <label>Data Final</label>
+                        <input type="date" name="to" value="{{ filters.to }}">
+                    </div>
+                    <div class="filter-group">
+                        <label>Buscar</label>
+                        <input type="text" name="search" placeholder="Buscar nos detalhes..." value="{{ filters.search }}">
+                    </div>
+                </div>
+                <div class="filter-actions">
+                    <button type="submit" class="btn-filter btn-apply">
+                        <i class="fas fa-search"></i> Aplicar Filtros
+                    </button>
+                    <button type="button" class="btn-filter btn-clear" onclick="clearFilters()">
+                        <i class="fas fa-times"></i> Limpar
+                    </button>
+                </div>
+            </form>
+        </div>
+        
+        <div class="table-container">
+            <div class="table-header">
+                <h3><i class="fas fa-list"></i> Registros</h3>
+                <span class="total-badge">{{ total }} registros encontrados</span>
+            </div>
+            
+            {% if logs %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Data/Hora</th>
+                        <th>Usuário</th>
+                        <th>Evento</th>
+                        <th>Alvo</th>
+                        <th>Detalhes</th>
+                        <th>IP</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs %}
+                    <tr>
+                        <td class="timestamp">{{ log.created_at }}</td>
+                        <td>
+                            <div class="user-info">
+                                <div class="user-avatar">{{ log.user_name[0].upper() if log.user_name else '?' }}</div>
+                                <span>{{ log.user_name or 'Sistema' }}</span>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="event-badge event-{{ log.event_type|lower }}">
+                                {{ event_types.get(log.event_type, log.event_type) }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if log.target_type and log.target_id %}
+                            <span>{{ log.target_type }} #{{ log.target_id }}</span>
+                            {% else %}
+                            <span style="color: rgba(255,255,255,0.4);">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="details-cell" title="{{ log.details }}">{{ log.details or '-' }}</td>
+                        <td class="ip-address">{{ log.ip_address or '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            
+            <div class="pagination">
+                {% if page > 1 %}
+                <a href="?page=1&user={{ filters.user }}&event={{ filters.event }}&from={{ filters.from }}&to={{ filters.to }}&search={{ filters.search }}&target={{ filters.target }}">
+                    <i class="fas fa-angle-double-left"></i>
+                </a>
+                <a href="?page={{ page - 1 }}&user={{ filters.user }}&event={{ filters.event }}&from={{ filters.from }}&to={{ filters.to }}&search={{ filters.search }}&target={{ filters.target }}">
+                    <i class="fas fa-angle-left"></i>
+                </a>
+                {% endif %}
+                
+                <span class="current">Página {{ page }} de {{ pages }}</span>
+                
+                {% if page < pages %}
+                <a href="?page={{ page + 1 }}&user={{ filters.user }}&event={{ filters.event }}&from={{ filters.from }}&to={{ filters.to }}&search={{ filters.search }}&target={{ filters.target }}">
+                    <i class="fas fa-angle-right"></i>
+                </a>
+                <a href="?page={{ pages }}&user={{ filters.user }}&event={{ filters.event }}&from={{ filters.from }}&to={{ filters.to }}&search={{ filters.search }}&target={{ filters.target }}">
+                    <i class="fas fa-angle-double-right"></i>
+                </a>
+                {% endif %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <i class="fas fa-inbox"></i>
+                <h3>Nenhum registro encontrado</h3>
+                <p>Não há registros de auditoria para os filtros selecionados.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <script>
+        let autoRefreshInterval = null;
+        let isAutoRefreshEnabled = true;
+        
+        // CORREÇÃO: Não usar lastTotal para comparação quando há filtros aplicados
+        // Isso causava reload infinito porque comparava total filtrado com total geral
+        let lastTotal = null; // Inicializar como null para não trigger reload na primeira carga
+
+        function clearFilters() {
+            window.location.href = '/admin/history';
+        }
+
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/audit/stats');
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById('statTotalEvents').textContent = data.stats.total_events.toLocaleString();
+                    document.getElementById('statEventsToday').textContent = data.stats.events_today.toLocaleString();
+                    document.getElementById('statLoginsToday').textContent = data.stats.logins_today.toLocaleString();
+                    document.getElementById('statActiveUsers').textContent = data.stats.active_users_today.toLocaleString();
+
+                    // CORREÇÃO: Só recarregar se NÃO houver filtros aplicados
+                    // Quando há filtros, o total da página é diferente do total geral
+                    const hasFilters = new URLSearchParams(window.location.search).toString() !== '';
+                    
+                    if (!hasFilters && lastTotal !== null && data.stats.total_events > lastTotal) {
+                        console.log('Novos eventos detectados, recarregando...');
+                        window.location.reload();
+                    }
+                    
+                    // Atualizar lastTotal apenas se não houver filtros
+                    if (!hasFilters) {
+                        lastTotal = data.stats.total_events;
+                    }
+                }
+            } catch (error) {
+                console.error('Erro ao carregar estatísticas:', error);
+            }
+        }
+
+        function startAutoRefresh() {
+            if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+            autoRefreshInterval = setInterval(() => {
+                if (isAutoRefreshEnabled && !document.hidden) {
+                    loadStats();
+                }
+            }, 5000); // Verifica a cada 5 segundos
+        }
+
+        // Pausar atualização quando usuário está em outra aba
+        document.addEventListener('visibilitychange', () => {
+            isAutoRefreshEnabled = !document.hidden;
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadStats();
+            startAutoRefresh();
+        });
+    </script>
+</body>
+</html>

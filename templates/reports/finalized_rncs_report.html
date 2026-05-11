@@ -243,7 +243,7 @@
     <button class="back-button no-print" onclick="window.location.href='/reports/generate'">📅 Novo Período</button>
     
     <div class="header">
-        <img src="/IPPELLOGO.jpg" alt="IPPEL Logo" class="logo">
+        <img src="/static/IPPELLOGO.jpg" alt="IPPEL Logo" class="logo">
         <h1 class="title">Relatório de RNCs Finalizados</h1>
         <p class="subtitle">Sistema de Relatórios de Não Conformidade</p>
         <p class="subtitle">IPPEL - Indústria de Produtos Plásticos</p>
@@ -273,11 +273,6 @@
                 <div class="stat-number">{{ stats.by_department|length }}</div>
                 <div class="stat-label">Departamentos</div>
             </div>
-            
-            <div class="stat-card">
-                <div class="stat-number">{{ stats.by_priority|length }}</div>
-                <div class="stat-label">Níveis de Prioridade</div>
-            </div>
         </div>
         
         {% if stats.by_department %}
@@ -286,17 +281,6 @@
             {% for dept, count in stats.by_department.items() %}
             <li style="display: inline-block; margin: 5px 10px; padding: 5px 10px; background: #e9ecef; border-radius: 3px;">
                 <strong>{{ dept or 'Não informado' }}</strong>: {{ count }} RNCs
-            </li>
-            {% endfor %}
-        </ul>
-        {% endif %}
-        
-        {% if stats.by_priority %}
-        <h3>Por Prioridade:</h3>
-        <ul style="list-style: none; padding: 0;">
-            {% for priority, count in stats.by_priority.items() %}
-            <li style="display: inline-block; margin: 5px 10px; padding: 5px 10px; background: #e9ecef; border-radius: 3px;">
-                <strong>{{ priority or 'Não informado' }}</strong>: {{ count }} RNCs
             </li>
             {% endfor %}
         </ul>
@@ -313,7 +297,6 @@
                 <th>Título</th>
                 <th>Cliente</th>
                 <th>Equipamento</th>
-                <th>Prioridade</th>
                 <th>Departamento</th>
                 <th>Criado por</th>
                 <th>Data Finalização</th>
@@ -328,18 +311,7 @@
                 <td>{{ rnc.client or 'Não informado' }}</td>
                 <td>{{ rnc.equipment or 'Não informado' }}</td>
                 <td>
-                    {% if rnc.priority == 'Alta' %}
-                        <span class="priority-high">ALTA</span>
-                    {% elif rnc.priority == 'Média' %}
-                        <span class="priority-medium">MÉDIA</span>
-                    {% elif rnc.priority == 'Baixa' %}
-                        <span class="priority-low">BAIXA</span>
-                    {% else %}
-                        <span class="priority-medium">{{ rnc.priority or 'N/A' }}</span>
-                    {% endif %}
-                </td>
-                <td>
-                    <span class="department-badge">{{ rnc.setor or rnc.area_responsavel or 'Não informado' }}</span>
+                    <span class="department-badge">{{ rnc.setor_nome or 'Não informado' }}</span>
                 </td>
                 <td>{{ rnc.responsavel or rnc.creator_name or 'Sistema' }}</td>
                 <td>{{ rnc.created_at.split(' ')[0] if rnc.created_at else 'N/A' }}</td>

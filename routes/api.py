@@ -265,6 +265,78 @@ def upload_avatar_image():
         return jsonify({'success': False, 'message': 'Erro ao salvar imagem'}), 500
 
 
+# ============ API para buscar gerentes de todos os grupos ============
+@api.get('/api/groups/managers')
+def get_all_group_managers():
+    """
+    Retorna os gerentes de todos os grupos para uso no dashboard.
+    Busca em group_managers (novo) E nas colunas manager_user_id/sub_manager_user_id (antigo).
+    """
+    try:
+        # Usar banco correto (ippel_system.db na raiz)
+        import os
+        db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'ippel_system.db')
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        managers_data = {}
+        
+        # 1. Buscar da tabela group_managers (sistema novo)
+        cursor.execute('''
+            SELECT g.name as group_name, u.name as manager_name, gm.manager_type
+            FROM group_managers gm
+            JOIN groups g ON g.id = gm.group_id
+            JOIN users u ON u.id = gm.user_id
+            ORDER BY g.name, gm.manager_type DESC, u.name
+        ''')
+        
+        for row in cursor.fetchall():
+            group_name = row['group_name'].upper()
+            if group_name not in managers_data:
+                managers_data[group_name] = []
+            if row['manager_name'] not in managers_data[group_name]:
+                managers_data[group_name].append(row['manager_name'])
+        
+        # 2. Buscar das colunas antigas (manager_user_id, sub_manager_user_id)
+        cursor.execute('''
+            SELECT g.name as group_name, 
+                   u1.name as manager_name, 
+                   u2.name as sub_manager_name
+            FROM groups g 
+            LEFT JOIN users u1 ON u1.id = g.manager_user_id
+            LEFT JOIN users u2 ON u2.id = g.sub_manager_user_id
+            WHERE g.manager_user_id IS NOT NULL OR g.sub_manager_user_id IS NOT NULL
+        ''')
+        
+        for row in cursor.fetchall():
+            group_name = row['group_name'].upper()
+            if group_name not in managers_data:
+                managers_data[group_name] = []
+            # Adicionar manager se não existir
+            if row['manager_name'] and row['manager_name'] not in managers_data[group_name]:
+                managers_data[group_name].insert(0, row['manager_name'])  # Manager primeiro
+            # Adicionar sub-manager se não existir
+            if row['sub_manager_name'] and row['sub_manager_name'] not in managers_data[group_name]:
+                managers_data[group_name].append(row['sub_manager_name'])
+        
+        conn.close()
+        
+        # Formatar para exibição (juntar nomes com " / ")
+        result = {}
+        for group, names in managers_data.items():
+            result[group] = ' / '.join(names) if names else group
+        
+        return jsonify({
+            'success': True,
+            'managers': result
+        })
+        
+    except Exception as e:
+        logger.error(f"Erro ao buscar gerentes: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
 # ============ API para buscar gerente/responsável de um grupo ============
 @api.get('/api/groups/<int:group_id>/manager')
 def get_group_manager(group_id):

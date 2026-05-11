@@ -206,9 +206,9 @@
     <button class="back-button no-print" onclick="window.location.href='/reports/menu'">📊 Novo Relatório</button>
     
     <div class="header" style="margin-bottom: 15px; padding-bottom: 10px;">
-        <img src="/IPPELLOGO.jpg" alt="IPPEL Logo" class="logo">
+        <img src="/static/IPPELLOGO.jpg" alt="IPPEL Logo" class="logo">
         <div class="title-section">
-            <h1 class="main-title">RELATÓRIO RNC POR DATA</h1>
+            <h1 class="main-title">RELATÓRIO RNC POR OPERADOR</h1>
             <p class="date-info">{{ start_date.split('-')[1] }}/{{ start_date.split('-')[0] }}</p>
         </div>
     </div>
@@ -224,70 +224,172 @@
 
     {# Processar todos os RNCs #}
     {% for rnc in rncs %}
-        {# Se for Produção, usar SETOR como grupo principal #}
-        {% if rnc.area_responsavel and 'produ' in rnc.area_responsavel|lower %}
+        {# Normalizar nome do departamento (capitalizar primeira letra) #}
+        {% set dept_raw = rnc.creator_department or 'Sem Departamento' %}
+        {% set dept_normalized = dept_raw[0]|upper + dept_raw[1:] if dept_raw else 'Sem Departamento' %}
+        {% set dept_lower = dept_normalized|lower %}
+        
+        {# Identificar setores de Produção #}
+        {% set is_production_sector = (
+            'produ' in dept_lower or 
+            'pintura' in dept_lower or 
+            'qualidade' in dept_lower or
+            'caldeiraria' in dept_lower or
+            'solda' in dept_lower or
+            'montagem' in dept_lower or
+            'corte' in dept_lower or
+            'usinagem' in dept_lower or
+            'usin.' in dept_lower or
+            'cil' in dept_lower
+        ) %}
+        
+        {# Identificar se é Terceiros (vai como grupo proprio) #}
+        {% set is_terceiros = 'terceiro' in dept_lower %}
+        
+        {# Se for setor de Produção, agrupar como Produção #}
+        {% if is_production_sector %}
             {% set main_group = 'Produção' %}
-            {% set sub_group = rnc.setor if rnc.setor else 'Setor não informado' %}
+            {# Usar o setor como subgrupo #}
+            {% if 'pintura' in dept_lower %}
+                {% set sub_group = 'Pintura' %}
+            {% elif 'qualidade' in dept_lower %}
+                {% set sub_group = 'Qualidade' %}
+            {% elif 'caldeiraria' in dept_lower and 'inox' in dept_lower %}
+                {% set sub_group = 'Caldeiraria de Inox' %}
+            {% elif 'caldeiraria' in dept_lower %}
+                {% set sub_group = 'Caldeiraria de Carbono' %}
+            {% elif 'cnc' in dept_lower %}
+                {% set sub_group = 'Usin. Cilindrica CNC' %}
+            {% elif 'convencional' in dept_lower %}
+                {% set sub_group = 'Usin. Cilindrica Convencional' %}
+            {% elif 'plana' in dept_lower %}
+                {% set sub_group = 'Usinagem Plana' %}
+            {% else %}
+                {% set sub_group = rnc.setor if rnc.setor and rnc.setor != 'Não informado' else dept_normalized %}
+            {% endif %}
+        {% elif is_terceiros %}
+            {% set main_group = 'Terceiros' %}
+            {% set sub_group = None %}
         {% else %}
             {# Para outros departamentos, usar área como grupo principal sem subgrupo #}
-            {% set main_group = rnc.creator_department or rnc.department or 'Sem Departamento' %}
+            {% if dept_normalized != 'Não informado' and dept_normalized != 'Sem Departamento' %}
+                {% set main_group = dept_normalized %}
+            {% else %}
+                {% set main_group = None %}
+            {% endif %}
             {% set sub_group = None %}
         {% endif %}
         
         {% set employee = rnc.responsavel or rnc.creator_name or 'Sistema' %}
-        {% set value = rnc.price|parse_brl if rnc.price else 0 %}
-
-        {# Inicializar grupo principal se não existir #}
-        {% if main_group not in departments %}
-            {% set _ = departments.update({main_group: {'subgroups': {}, 'total': 0}}) %}
-        {% endif %}
-
-        {# Se tiver subgrupo (Produção -> Setor) #}
-        {% if sub_group %}
-            {# Inicializar subgrupo se não existir #}
-            {% if sub_group not in departments[main_group]['subgroups'] %}
-                {% set _ = departments[main_group]['subgroups'].update({sub_group: {'employees': {}, 'total': 0}}) %}
-            {% endif %}
-            
-            {# Adicionar funcionário no subgrupo #}
-            {% if employee not in departments[main_group]['subgroups'][sub_group]['employees'] %}
-                {% set _ = departments[main_group]['subgroups'][sub_group]['employees'].update({employee: 0}) %}
-            {% endif %}
-            
-            {# Somar valor no funcionário e subgrupo #}
-            {% set _ = departments[main_group]['subgroups'][sub_group]['employees'].update({employee: departments[main_group]['subgroups'][sub_group]['employees'][employee] + value}) %}
-            {% set _ = departments[main_group]['subgroups'][sub_group].update({'total': departments[main_group]['subgroups'][sub_group]['total'] + value}) %}
-        {% else %}
-            {# Sem subgrupo: adicionar diretamente no grupo principal #}
-            {% if 'employees' not in departments[main_group] %}
-                {% set _ = departments[main_group].update({'employees': {}}) %}
-            {% endif %}
-            
-            {% if employee not in departments[main_group]['employees'] %}
-                {% set _ = departments[main_group]['employees'].update({employee: 0}) %}
-            {% endif %}
-            
-            {% set _ = departments[main_group]['employees'].update({employee: departments[main_group]['employees'][employee] + value}) %}
+        
+        {# Normalizar nome do Cláudio Brandão (apenas variações de acentuação) #}
+        {% set employee_lower = employee|lower %}
+        {% if 'claudio' in employee_lower and ('brandao' in employee_lower or 'brandão' in employee_lower) %}
+            {% set employee = 'Cláudio Brandão' %}
+            {% set employee_lower = 'cláudio brandão' %}
         {% endif %}
         
-        {# Somar no total do grupo principal #}
-        {% set _ = departments[main_group].update({'total': departments[main_group]['total'] + value}) %}
+        {% set value = rnc.price|parse_brl if rnc.price else 0 %}
+        {% set rnc_id = rnc.id %}
+        
+        {# Filtrar funcionários indesejados #}
+        {% set skip_employee = (
+            'adriani' in employee_lower or 
+            'melotti' in employee_lower or 
+            'lalinka' in employee_lower or
+            'camila' in employee_lower or
+            employee == '14321' or
+            'haln' in employee_lower
+        ) %}
+
+        {# Pular se não tiver grupo principal válido ou funcionário filtrado #}
+        {% if main_group and not skip_employee %}
+            {# Inicializar grupo principal se não existir #}
+            {% if main_group not in departments %}
+                {% set _ = departments.update({main_group: {'subgroups': {}, 'total': 0, 'rnc_ids': {}}}) %}
+            {% endif %}
+
+            {# Se tiver subgrupo (Produção -> Setor) #}
+            {% if sub_group %}
+                {# Inicializar subgrupo se não existir #}
+                {% if sub_group not in departments[main_group]['subgroups'] %}
+                    {% set _ = departments[main_group]['subgroups'].update({sub_group: {'employees': {}, 'total': 0, 'rnc_ids': {}}}) %}
+                {% endif %}
+                
+                {# Adicionar funcionário no subgrupo apenas se RNC não foi processada #}
+                {% if employee not in departments[main_group]['subgroups'][sub_group]['rnc_ids'] %}
+                    {% set _ = departments[main_group]['subgroups'][sub_group]['rnc_ids'].update({employee: []}) %}
+                {% endif %}
+                
+                {% if rnc_id not in departments[main_group]['subgroups'][sub_group]['rnc_ids'][employee] %}
+                    {% set _ = departments[main_group]['subgroups'][sub_group]['rnc_ids'][employee].append(rnc_id) %}
+                    
+                    {# Inicializar contador do funcionário se não existir #}
+                    {% if employee not in departments[main_group]['subgroups'][sub_group]['employees'] %}
+                        {% set _ = departments[main_group]['subgroups'][sub_group]['employees'].update({employee: 0}) %}
+                    {% endif %}
+                    
+                    {# Somar valor no funcionário e subgrupo #}
+                    {% set _ = departments[main_group]['subgroups'][sub_group]['employees'].update({employee: departments[main_group]['subgroups'][sub_group]['employees'][employee] + value}) %}
+                    {% set _ = departments[main_group]['subgroups'][sub_group].update({'total': departments[main_group]['subgroups'][sub_group]['total'] + value}) %}
+                {% endif %}
+            {% else %}
+                {# Sem subgrupo: adicionar diretamente no grupo principal #}
+                {% if 'employees' not in departments[main_group] %}
+                    {% set _ = departments[main_group].update({'employees': {}, 'rnc_ids': {}}) %}
+                {% endif %}
+                
+                {# Adicionar funcionário na lista de IDs se não existir #}
+                {% if employee not in departments[main_group]['rnc_ids'] %}
+                    {% set _ = departments[main_group]['rnc_ids'].update({employee: []}) %}
+                {% endif %}
+                
+                {# Processar apenas se RNC não foi vista antes #}
+                {% if rnc_id not in departments[main_group]['rnc_ids'][employee] %}
+                    {% set _ = departments[main_group]['rnc_ids'][employee].append(rnc_id) %}
+                    
+                    {% if employee not in departments[main_group]['employees'] %}
+                        {% set _ = departments[main_group]['employees'].update({employee: 0}) %}
+                    {% endif %}
+                    
+                    {% set _ = departments[main_group]['employees'].update({employee: departments[main_group]['employees'][employee] + value}) %}
+                {% endif %}
+            {% endif %}
+            
+            {# Somar no total do grupo principal #}
+            {% set _ = departments[main_group].update({'total': departments[main_group]['total'] + value}) %}
+        {% endif %}
     {% endfor %}
 
-    {# Calcular total geral somando todos os valores de RNCs #}
-    {% set grand_total = rncs|selectattr('price')|map(attribute='price')|map('parse_brl')|sum %}
+    {# Calcular total geral somando os totais de cada departamento (que já tem filtros aplicados) #}
+    {% set grand_total = departments.values()|sum(attribute='total') %}
     
     <div class="department-header" style="margin-top:5px; margin-bottom:8px; background:#d4edda; font-size:16px;">
         <span class="department-name">💰 Total Geral</span>
         <span class="department-total">R$ {{ grand_total|brl }}</span>
     </div>
     
-    {# Renderizar por departamento - ORDEM ALFABÉTICA #}
+    {# Renderizar por departamento - ORDEM ALFABÉTICA com Terceiros por último #}
     {% set dept_list = [] %}
+    {% set terceiros_data = namespace(item=None) %}
     {% for name, data in departments.items() %}
-        {% set _ = dept_list.append({'name': name, 'data': data, 'total': data.total}) %}
+        {# Pular departamentos zerados ou Corte (já está em Produção) #}
+        {% if data.total > 0 and name != 'Corte' %}
+            {# Terceiros vai por último #}
+            {% if name == 'Terceiros' %}
+                {% set terceiros_data.item = {'name': name, 'data': data, 'total': data.total} %}
+            {% else %}
+                {% set _ = dept_list.append({'name': name, 'data': data, 'total': data.total}) %}
+            {% endif %}
+        {% endif %}
     {% endfor %}
-    {% for _item in dept_list|sort(attribute='name') %}
+    {# Ordenar alfabeticamente #}
+    {% set dept_list = dept_list|sort(attribute='name') %}
+    {# Adicionar Terceiros no final #}
+    {% if terceiros_data.item %}
+        {% set _ = dept_list.append(terceiros_data.item) %}
+    {% endif %}
+    {% for _item in dept_list %}
         {% set dept_name = _item.name %}
         {% set dept_data = _item.data %}
         <div class="department-section">
@@ -302,31 +404,62 @@
             {# Se tiver SUBGRUPOS (Produção > Setores) #}
             {% if dept_data.subgroups %}
                 {% for subgroup_name, subgroup_data in dept_data.subgroups|dictsort %}
-                    <div style="margin-left: 20px; margin-top: 5px;">
-                        <div class="department-header" style="font-size: 13px; background: #e8f4f8; padding: 4px 10px;">
-                            <span class="department-name">📂 {{ subgroup_name }}</span>
-                            <span class="department-total">R$ {{ subgroup_data.total|brl }}</span>
+                    {# Pular setores zerados ou "Não informado" #}
+                    {% if subgroup_data.total > 0 and subgroup_name != 'Não informado' and subgroup_name != 'Setor não informado' %}
+                        <div style="margin-left: 20px; margin-top: 5px;">
+                            <div class="department-header" style="font-size: 13px; background: #e8f4f8; padding: 4px 10px;">
+                                <span class="department-name">📂 {{ subgroup_name }}</span>
+                                <span class="department-total">R$ {{ subgroup_data.total|brl }}</span>
+                            </div>
+                            <div class="employee-list" style="margin-left: 20px;">
+                                {# ORDEM ALFABÉTICA dos funcionários no setor #}
+                                {% for employee_name, employee_value in subgroup_data.employees|dictsort %}
+                                    {# Filtrar funcionários indesejados e zerados #}
+                                    {% set emp_lower = employee_name|lower %}
+                                    {% set skip = (
+                                        'adriani' in emp_lower or 
+                                        'melotti' in emp_lower or 
+                                        'lalinka' in emp_lower or
+                                        'camila' in emp_lower or
+                                        employee_name == '14321' or
+                                        'haln' in emp_lower or
+                                        ('brandao' in emp_lower and employee_value == 0) or
+                                        ('brandão' in emp_lower and employee_value == 0)
+                                    ) %}
+                                    {% if employee_value > 0 and not skip %}
+                                        <div class="employee-item">
+                                            <span class="employee-name">{{ employee_name }}</span>
+                                            <span class="employee-value">R$ {{ employee_value|brl }}</span>
+                                        </div>
+                                    {% endif %}
+                                {% endfor %}
+                            </div>
                         </div>
-                        <div class="employee-list" style="margin-left: 20px;">
-                            {# ORDEM ALFABÉTICA dos funcionários no setor #}
-                            {% for employee_name, employee_value in subgroup_data.employees|dictsort %}
-                                <div class="employee-item">
-                                    <span class="employee-name">{{ employee_name }}</span>
-                                    <span class="employee-value">R$ {{ employee_value|brl }}</span>
-                                </div>
-                            {% endfor %}
-                        </div>
-                    </div>
+                    {% endif %}
                 {% endfor %}
             {% else %}
                 {# Sem subgrupos: mostrar funcionários diretamente #}
                 <div class="employee-list">
                     {# ORDEM ALFABÉTICA dos funcionários #}
                     {% for employee_name, employee_value in dept_data.employees|dictsort %}
-                        <div class="employee-item">
-                            <span class="employee-name">{{ employee_name }}</span>
-                            <span class="employee-value">R$ {{ employee_value|brl }}</span>
-                        </div>
+                        {# Filtrar funcionários indesejados e zerados #}
+                        {% set emp_lower = employee_name|lower %}
+                        {% set skip = (
+                            'adriani' in emp_lower or 
+                            'melotti' in emp_lower or 
+                            'lalinka' in emp_lower or
+                            'camila' in emp_lower or
+                            employee_name == '14321' or
+                            'haln' in emp_lower or
+                            ('brandao' in emp_lower and employee_value == 0) or
+                            ('brandão' in emp_lower and employee_value == 0)
+                        ) %}
+                        {% if employee_value > 0 and not skip %}
+                            <div class="employee-item">
+                                <span class="employee-name">{{ employee_name }}</span>
+                                <span class="employee-value">R$ {{ employee_value|brl }}</span>
+                            </div>
+                        {% endif %}
                     {% endfor %}
                 </div>
             {% endif %}
@@ -351,3 +484,4 @@
     </div>
 </body>
 </html>
+

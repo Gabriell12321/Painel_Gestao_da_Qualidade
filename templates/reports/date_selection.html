@@ -191,7 +191,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <img src="/IPPELLOGO.jpg" alt="IPPEL Logo" class="logo">
+            <img src="/static/IPPELLOGO.jpg" alt="IPPEL Logo" class="logo">
             <h1 class="title" id="reportTitle">Relatório de RNCs</h1>
             <p class="subtitle" id="reportSubtitle">Selecione o período para gerar o relatório</p>
         </div>
@@ -201,6 +201,106 @@
             <div class="info-text" id="reportInfo">
                 Este relatório mostrará todos os RNCs que foram finalizados no período selecionado, 
                 incluindo estatísticas detalhadas e valores totais.
+            </div>
+        </div>
+        
+        <!-- Filtro de Status (visível apenas para relatório por operador) -->
+        <div id="statusFilterContainer" style="display: none; margin-bottom: 20px;">
+            <div class="form-group">
+                <label class="form-label">Filtrar por Status</label>
+                <select id="status_filter" name="status_filter" class="form-input" style="cursor: pointer;">
+                    <option value="both">Ambos (Finalizadas + Ativas)</option>
+                    <option value="finalized">Apenas Finalizadas</option>
+                    <option value="pending">Apenas Ativas/Pendentes</option>
+                </select>
+            </div>
+        </div>
+        
+        <!-- Filtros para Pauta Reunião -->
+        <div id="pautaReuniaoFilters" style="display: none; margin-bottom: 20px;">
+            <div class="form-group">
+                <label class="form-label">Tipo de Registro</label>
+                <select id="tipo_registro" name="tipo_registro" class="form-input" style="cursor: pointer;">
+                    <option value="ambos">Ambos (R.O + RNC)</option>
+                    <option value="ro">Apenas R.O</option>
+                    <option value="rnc">Apenas RNC</option>
+                    <option value="garantias">Apenas Garantias</option>
+                    <option value="todos">Todos (R.O + RNC + Garantias)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Filtrar por Setor</label>
+                <select id="setor_filter" name="setor_filter" class="form-input" style="cursor: pointer;">
+                    <option value="todos">Todos os Setores</option>
+                    <option value="Comercial">Comercial</option>
+                    <option value="Suprimentos">Suprimentos</option>
+                    <option value="PCP">PCP</option>
+                    <option value="Engenharia">Engenharia</option>
+                    <option value="Produção">Produção</option>
+                    <option value="Diretor Industrial">Diretor Industrial</option>
+                    <option value="Qualidade">Qualidade</option>
+                    <option value="Manutenção">Manutenção</option>
+                </select>
+            </div>
+        </div>
+        
+        <!-- Filtro para Relatório Por Setor -->
+        <div id="bySectorFilters" style="display: none; margin-bottom: 20px;">
+            <div class="form-group">
+                <label class="form-label">Filtrar por Setor</label>
+                <select id="setor_filter_sector" name="setor_filter_sector" class="form-input" style="cursor: pointer;">
+                    <option value="todos">Todos os Setores</option>
+                    <option value="Comercial">Comercial</option>
+                    <option value="Suprimentos">Suprimentos</option>
+                    <option value="PCP">PCP</option>
+                    <option value="Engenharia">Engenharia</option>
+                    <option value="Produção">Produção</option>
+                    <option value="Diretor Industrial">Diretor Industrial</option>
+                    <option value="Qualidade">Qualidade</option>
+                    <option value="Manutenção">Manutenção</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Filtrar por Valor (R$)</label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div>
+                        <input type="number" id="valor_min" name="valor_min" class="form-input" placeholder="Valor mínimo" step="0.01" min="0">
+                    </div>
+                    <div>
+                        <input type="number" id="valor_max" name="valor_max" class="form-input" placeholder="Valor máximo" step="0.01" min="0">
+                    </div>
+                </div>
+                <small style="color: #7f8c8d; font-size: 11px;">Deixe em branco para não filtrar por valor</small>
+            </div>
+        </div>
+        
+        <!-- Filtro para Relatório Total Detalhado -->
+        <div id="totalDetailedFilters" style="display: none; margin-bottom: 20px;">
+            <div class="form-group">
+                <label class="form-label">Filtrar por Setor</label>
+                <select id="setor_filter_detailed" name="setor_filter_detailed" class="form-input" style="cursor: pointer;">
+                    <option value="todos">Todos os Setores</option>
+                    <option value="Comercial">Comercial</option>
+                    <option value="Suprimentos">Suprimentos</option>
+                    <option value="PCP">PCP</option>
+                    <option value="Engenharia">Engenharia</option>
+                    <option value="Produção">Produção</option>
+                    <option value="Diretor Industrial">Diretor Industrial</option>
+                    <option value="Qualidade">Qualidade</option>
+                    <option value="Manutenção">Manutenção</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Filtrar por Valor (R$)</label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div>
+                        <input type="number" id="valor_min_detailed" name="valor_min_detailed" class="form-input" placeholder="Valor mínimo" step="0.01" min="0">
+                    </div>
+                    <div>
+                        <input type="number" id="valor_max_detailed" name="valor_max_detailed" class="form-input" placeholder="Valor máximo" step="0.01" min="0">
+                    </div>
+                </div>
+                <small style="color: #7f8c8d; font-size: 11px;">Deixe em branco para não filtrar por valor</small>
             </div>
         </div>
         
@@ -260,26 +360,61 @@
                 'finalized': 'Relatório de RNCs Finalizados',
                 'total_detailed': 'Relatório Total Detalhado',
                 'by_operator': 'Relatório por Operador',
-                'by_sector': 'Relatório por Setor'
+                'by_sector': 'Relatório por Setor',
+                'pauta_reuniao': 'Relatório Pauta Reunião'
             };
             
             const subtitles = {
                 'finalized': 'Selecione o período para gerar o relatório',
                 'total_detailed': 'Selecione o período para gerar o relatório',
                 'by_operator': 'Selecione o período para gerar o relatório',
-                'by_sector': 'Selecione o período para gerar o relatório'
+                'by_sector': 'Selecione o período para gerar o relatório',
+                'pauta_reuniao': 'Selecione o período para gerar o relatório'
             };
             
             const infos = {
                 'finalized': 'Este relatório mostrará todos os RNCs que foram finalizados no período selecionado, incluindo estatísticas detalhadas e valores totais.',
                 'total_detailed': 'Este relatório mostrará todos os RNCs criados no período selecionado, independente do status, com análise completa por status e prioridade.',
                 'by_operator': 'Este relatório organizará os RNCs por operador, mostrando a performance individual de cada usuário no período selecionado.',
-                'by_sector': 'Este relatório organizará os RNCs por setor/departamento, ideal para análise gerencial e distribuição de responsabilidades.'
+                'by_sector': 'Este relatório organizará os RNCs por setor/departamento, ideal para análise gerencial e distribuição de responsabilidades.',
+                'pauta_reuniao': 'Este relatório apresenta os RNCs organizados por setor para discussão em reunião, com dados completos de cliente, equipamento e descrição.'
             };
             
             document.getElementById('reportTitle').textContent = titles[reportType] || titles['finalized'];
             document.getElementById('reportSubtitle').textContent = subtitles[reportType] || subtitles['finalized'];
             document.getElementById('reportInfo').textContent = infos[reportType] || infos['finalized'];
+            
+            // Mostrar filtro de status apenas para relatório por operador
+            const statusFilterContainer = document.getElementById('statusFilterContainer');
+            if (reportType === 'by_operator') {
+                statusFilterContainer.style.display = 'block';
+            } else {
+                statusFilterContainer.style.display = 'none';
+            }
+            
+            // Mostrar filtros para relatório Pauta Reunião
+            const pautaReuniaoFilters = document.getElementById('pautaReuniaoFilters');
+            if (reportType === 'pauta_reuniao') {
+                pautaReuniaoFilters.style.display = 'block';
+            } else {
+                pautaReuniaoFilters.style.display = 'none';
+            }
+            
+            // Mostrar filtro de setor para relatório Por Setor
+            const bySectorFilters = document.getElementById('bySectorFilters');
+            if (reportType === 'by_sector') {
+                bySectorFilters.style.display = 'block';
+            } else {
+                bySectorFilters.style.display = 'none';
+            }
+            
+            // Mostrar filtros para relatório Total Detalhado
+            const totalDetailedFilters = document.getElementById('totalDetailedFilters');
+            if (reportType === 'total_detailed') {
+                totalDetailedFilters.style.display = 'block';
+            } else {
+                totalDetailedFilters.style.display = 'none';
+            }
         }
         
         // Função para definir datas rápidas
@@ -363,8 +498,55 @@
             const urlParams = new URLSearchParams(window.location.search);
             const reportType = urlParams.get('type') || 'finalized';
             
-            // Redirecionar para o relatório com as datas e tipo
-            window.location.href = `/reports/generate?start_date=${startDate}&end_date=${endDate}&type=${reportType}`;
+            // Montar URL com parâmetros
+            let reportUrl = `/reports/generate?start_date=${startDate}&end_date=${endDate}&type=${reportType}`;
+            
+            // Adicionar filtro de status se for relatório por operador
+            if (reportType === 'by_operator') {
+                const statusFilter = document.getElementById('status_filter').value;
+                reportUrl += `&status=${statusFilter}`;
+            }
+            
+            // Adicionar filtro de setor para relatório Por Setor
+            if (reportType === 'by_sector') {
+                const setorFilter = document.getElementById('setor_filter_sector').value;
+                reportUrl += `&setor=${encodeURIComponent(setorFilter)}`;
+                
+                // Adicionar filtro de valor
+                const valorMin = document.getElementById('valor_min').value;
+                const valorMax = document.getElementById('valor_max').value;
+                if (valorMin) {
+                    reportUrl += `&valor_min=${valorMin}`;
+                }
+                if (valorMax) {
+                    reportUrl += `&valor_max=${valorMax}`;
+                }
+            }
+            
+            // Adicionar filtros para Total Detalhado
+            if (reportType === 'total_detailed') {
+                const setorFilter = document.getElementById('setor_filter_detailed').value;
+                reportUrl += `&setor=${encodeURIComponent(setorFilter)}`;
+                
+                const valorMin = document.getElementById('valor_min_detailed').value;
+                const valorMax = document.getElementById('valor_max_detailed').value;
+                if (valorMin) {
+                    reportUrl += `&valor_min=${valorMin}`;
+                }
+                if (valorMax) {
+                    reportUrl += `&valor_max=${valorMax}`;
+                }
+            }
+            
+            // Adicionar filtros para Pauta Reunião
+            if (reportType === 'pauta_reuniao') {
+                const tipoRegistro = document.getElementById('tipo_registro').value;
+                const setorFilter = document.getElementById('setor_filter').value;
+                reportUrl += `&tipo_registro=${tipoRegistro}&setor=${encodeURIComponent(setorFilter)}`;
+            }
+            
+            // Redirecionar para o relatório
+            window.location.href = reportUrl;
         }
         
         // Validação em tempo real

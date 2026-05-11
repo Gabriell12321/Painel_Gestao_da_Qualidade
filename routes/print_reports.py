@@ -14,7 +14,6 @@ from services.permissions import has_permission
 
 print_reports = Blueprint('print_reports', __name__)
 
-# ===== Jinja filter: parse BRL currency to float =====
 @print_reports.app_template_filter('parse_brl')
 def _parse_brl_to_float(value):
     """Parse Brazilian currency string to float.
@@ -29,23 +28,40 @@ def _parse_brl_to_float(value):
         if value is None or value == '':
             return 0.0
         if isinstance(value, (int, float)):
-            return float(value)
+            return abs(float(value))
         
         s = str(value).strip()
+        if not s or s == '-':
+            return 0.0
+        
         # Remove currency symbols, quotes, and spaces
         for ch in ['R$', '$', ' ', '\"', '"', "'"]:
             s = s.replace(ch, '')
         
-        # Determine format based on separators
-        if ',' in s and '.' in s:
-            # BR format: thousands '.' and decimal ','
-            s = s.replace('.', '').replace(',', '.')
-        elif ',' in s and '.' not in s:
-            # Only comma -> decimal comma
-            s = s.replace(',', '.')
-        # else: only dot or no separator -> keep as is
+        if not s or s == '-':
+            return 0.0
         
-        return float(s) if s and s not in ('-',) else 0.0
+        # Count separators to determine format
+        comma_count = s.count(',')
+        dot_count = s.count('.')
+        
+        if comma_count > 0 and dot_count > 0:
+            # Both present: determine which is decimal
+            last_comma_pos = s.rfind(',')
+            last_dot_pos = s.rfind('.')
+            
+            if last_comma_pos > last_dot_pos:
+                # BR format: 1.234,56 (dot=thousands, comma=decimal)
+                s = s.replace('.', '').replace(',', '.')
+            else:
+                # US format: 1,234.56 (comma=thousands, dot=decimal)
+                s = s.replace(',', '')
+        elif comma_count > 0:
+            # Only comma: decimal separator (BR format)
+            s = s.replace(',', '.')
+        # else: only dot or no separator -> keep as is (US format)
+        
+        return float(s) if s else 0.0
     except Exception:
         return 0.0
 
@@ -220,7 +236,12 @@ def print_rnc_report():
             LEFT JOIN users u ON r.user_id = u.id
             LEFT JOIN users au ON r.assigned_user_id = au.id
             WHERE r.is_deleted = 0 
-            AND DATE(r.created_at) BETWEEN ? AND ?
+            AND CASE
+            WHEN r.created_at LIKE '__/__/____' THEN 
+                substr(r.created_at, 7, 4) || '-' || substr(r.created_at, 4, 2) || '-' || substr(r.created_at, 1, 2)
+            ELSE 
+                DATE(r.created_at)
+        END BETWEEN ? AND ?
             ORDER BY r.created_at DESC
         """
         
@@ -341,98 +362,691 @@ def generate_report():
         
         if report_type == 'finalized':
             # Relatório de RNCs finalizados
-            # CORRIGIDO: Usar created_at porque finalized_at está NULL para todas as RNCs
             query = """
-                SELECT r.*, u.name as creator_name, u.department as creator_department,
-                       au.name as assigned_user_name, au.department as assigned_department
+                SELECT r.*, 
+                       u.name as creator_name, 
+                       u.department as creator_department,
+                       au.name as assigned_user_name, 
+                       au.department as assigned_department,
+                       COALESCE(
+                           (SELECT name FROM groups WHERE id = CAST(r.area_responsavel AS INTEGER)),
+                           (SELECT name FROM groups WHERE id = CAST(r.setor AS INTEGER)),
+                           r.area_responsavel,
+                           r.setor,
+                           'Não informado'
+                       ) as setor_nome
                 FROM rncs r
                 LEFT JOIN users u ON r.user_id = u.id
                 LEFT JOIN users au ON r.assigned_user_id = au.id
                 WHERE r.is_deleted = 0 
                 AND r.status = 'Finalizado'
-                AND DATE(r.created_at) BETWEEN ? AND ?
+                AND COALESCE(r.area_responsavel, r.setor, '') NOT IN ('Não Definidos', 'Transporte', 'Filial', 'Usinagem plana')
+                AND CASE
+            WHEN r.created_at LIKE '__/__/____' THEN 
+                substr(r.created_at, 7, 4) || '-' || substr(r.created_at, 4, 2) || '-' || substr(r.created_at, 1, 2)
+            ELSE 
+                DATE(r.created_at)
+        END BETWEEN ? AND ?
                 ORDER BY r.created_at DESC
             """
             template = 'reports/finalized_rncs_report.html'
             stats = calculate_finalized_stats_period(cursor, start_date, end_date)
+            print(f"DEBUG - Stats calculados: total_finalizados={stats.get('total_finalizados')}, total_value={stats.get('total_value')}")
             
         elif report_type == 'total_detailed':
             # Relatório total detalhado
+            # Obter filtros
+            setor_filter = request.args.get('setor', 'todos')
+            valor_min = request.args.get('valor_min', '')
+            valor_max = request.args.get('valor_max', '')
+            
             query = """
-                SELECT r.*, u.name as creator_name, u.department as creator_department,
-                       au.name as assigned_user_name, au.department as assigned_department
+                SELECT r.*, 
+                       u.name as creator_name, 
+                       u.department as creator_department,
+                       au.name as assigned_user_name, 
+                       au.department as assigned_department,
+                       COALESCE(causador_u.name, CAST(r.responsavel AS TEXT)) as causador_nome,
+                       COALESCE(
+                           (SELECT name FROM groups WHERE id = CAST(r.area_responsavel AS INTEGER)),
+                           (SELECT name FROM groups WHERE id = CAST(r.setor AS INTEGER)),
+                           r.area_responsavel,
+                           r.setor,
+                           r.ass_responsavel,
+                           'Não informado'
+                       ) as setor_responsavel,
+                       r.signature_inspection_date as data_setor_responsavel,
+                       r.signature_inspection_name as assinatura_responsavel
                 FROM rncs r
                 LEFT JOIN users u ON r.user_id = u.id
                 LEFT JOIN users au ON r.assigned_user_id = au.id
+                LEFT JOIN users causador_u ON CAST(r.responsavel AS TEXT) = CAST(causador_u.id AS TEXT)
                 WHERE r.is_deleted = 0 
-                AND DATE(r.created_at) BETWEEN ? AND ?
+                AND CASE
+                    WHEN r.created_at LIKE '__/__/____' THEN 
+                        substr(r.created_at, 7, 4) || '-' || substr(r.created_at, 4, 2) || '-' || substr(r.created_at, 1, 2)
+                    ELSE 
+                        DATE(r.created_at)
+                END BETWEEN ? AND ?
                 ORDER BY r.created_at DESC
             """
             template = 'reports/total_detailed_report.html'
-            stats = calculate_total_stats_period(cursor, start_date, end_date)
+            
+            # Executar query
+            cursor.execute(query, (start_date, end_date))
+            rncs = cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+            rncs_list = [dict(zip(columns, rnc)) for rnc in rncs]
+            
+            # Função para normalizar setor
+            def normalizar_setor(setor_nome):
+                if setor_nome in ['Terceiros', 'Compras']:
+                    return 'Suprimentos'
+                elif setor_nome in ['Usinagem Plana', 'Usin. Cilíndrica CNC', 'Usin. Cilíndrica Convencional', 
+                                    'Balanceamento', 'Caldeiraria de Carbono', 'Caldeiraria de Inox', 
+                                    'Corte', 'Montagem', 'Pintura', 'Produção']:
+                    return 'Produção'
+                elif setor_nome == 'Não Definidos':
+                    return 'Não informado'
+                return setor_nome
+            
+            # Filtrar por setor se não for "todos"
+            if setor_filter != 'todos':
+                rncs_list = [r for r in rncs_list if normalizar_setor(r.get('setor_responsavel', 'Não informado')) == setor_filter]
+            
+            # Filtrar por valor
+            if valor_min or valor_max:
+                def get_price_value(rnc):
+                    price = rnc.get('price', 0)
+                    if price is None or price == '':
+                        return 0.0
+                    if isinstance(price, (int, float)):
+                        return float(price)
+                    s = str(price).strip()
+                    for ch in ['R$', '$', ' ', '"', "'"]:
+                        s = s.replace(ch, '')
+                    if ',' in s and '.' in s:
+                        s = s.replace('.', '').replace(',', '.')
+                    elif ',' in s:
+                        s = s.replace(',', '.')
+                    try:
+                        return float(s) if s else 0.0
+                    except:
+                        return 0.0
+                
+                if valor_min:
+                    try:
+                        min_val = float(valor_min)
+                        rncs_list = [r for r in rncs_list if get_price_value(r) >= min_val]
+                    except:
+                        pass
+                
+                if valor_max:
+                    try:
+                        max_val = float(valor_max)
+                        rncs_list = [r for r in rncs_list if get_price_value(r) <= max_val]
+                    except:
+                        pass
+            
+            # Calcular estatísticas baseadas na lista FILTRADA
+            def calculate_filtered_stats_detailed(filtered_rncs):
+                """Calcula estatísticas baseadas na lista de RNCs filtradas"""
+                total = len(filtered_rncs)
+                total_value = 0.0
+                by_status = {}
+                by_department = {}
+                
+                def parse_price(price):
+                    if price is None or price == '':
+                        return 0.0
+                    if isinstance(price, (int, float)):
+                        return float(price)
+                    s = str(price).strip()
+                    for ch in ['R$', '$', ' ', '"', "'"]:
+                        s = s.replace(ch, '')
+                    if ',' in s and '.' in s:
+                        s = s.replace('.', '').replace(',', '.')
+                    elif ',' in s:
+                        s = s.replace(',', '.')
+                    try:
+                        return float(s) if s else 0.0
+                    except:
+                        return 0.0
+                
+                for rnc in filtered_rncs:
+                    # Valor total
+                    total_value += parse_price(rnc.get('price', 0))
+                    
+                    # Por status
+                    status = rnc.get('status', 'Pendente')
+                    by_status[status] = by_status.get(status, 0) + 1
+                    
+                    # Por departamento
+                    dept = rnc.get('setor_responsavel') or rnc.get('creator_department') or 'Não informado'
+                    by_department[dept] = by_department.get(dept, 0) + 1
+                
+                return {
+                    'total_rncs': total,
+                    'total_value': total_value,
+                    'by_status': by_status,
+                    'by_department': by_department,
+                    'num_departments': len(by_department)
+                }
+            
+            stats = calculate_filtered_stats_detailed(rncs_list)
+            
+            # DEBUG
+            print(f"\n=== DEBUG RELATÓRIO TOTAL DETALHADO ===")
+            print(f"Período: {start_date} a {end_date}")
+            print(f"Filtro Setor: {setor_filter}")
+            print(f"Filtro Valor Min: {valor_min}")
+            print(f"Filtro Valor Max: {valor_max}")
+            print(f"Total de RNCs: {len(rncs_list)}")
+            print(f"=======================================\n")
+            
+            return_db_connection(conn)
+            
+            return render_template(template, 
+                                 rncs_list=rncs_list,
+                                 rncs=rncs_list,
+                                 stats=stats,
+                                 start_date=start_date,
+                                 end_date=end_date,
+                                 report_type=report_type,
+                                 setor_filter=setor_filter,
+                                 valor_min=valor_min,
+                                 valor_max=valor_max,
+                                 generated_at=datetime.now())
             
         elif report_type == 'by_operator':
             # Relatório por operador
-            # CORRIGIDO: Incluir TODAS as RNCs finalizadas, mesmo sem responsável
-            # O template agrupará por área/setor quando não houver responsável
-            query = """
+            # Filtro de status baseado no parâmetro
+            status_filter = request.args.get('status', 'both')  # 'finalized', 'pending', 'both'
+            
+            if status_filter == 'finalized':
+                status_clause = "AND r.status = 'Finalizado'"
+            elif status_filter == 'pending':
+                status_clause = "AND r.status = 'Pendente'"
+            else:  # both
+                status_clause = "AND r.status IN ('Finalizado', 'Pendente')"
+            
+            query = f"""
                 SELECT r.*, 
-                       COALESCE(NULLIF(r.responsavel, ''), 'Não informado') as creator_name,
-                       CASE 
-                           WHEN r.area_responsavel IS NOT NULL AND r.area_responsavel != '' THEN r.area_responsavel
-                           WHEN r.setor IS NOT NULL AND r.setor != '' THEN r.setor
-                           ELSE 'Não informado'
-                       END as creator_department,
-                       COALESCE(NULLIF(r.responsavel, ''), 'Não informado') as assigned_user_name,
-                       CASE 
-                           WHEN r.area_responsavel IS NOT NULL AND r.area_responsavel != '' THEN r.area_responsavel
-                           WHEN r.setor IS NOT NULL AND r.setor != '' THEN r.setor
-                           ELSE 'Não informado'
-                       END as assigned_department
+                       COALESCE(causador_u.name, u.name, r.responsavel) as creator_name,
+                       COALESCE(g.name, r.area_responsavel, r.setor, 'Não informado') as creator_department,
+                       COALESCE(causador_u.name, u.name, r.responsavel) as assigned_user_name,
+                       COALESCE(g.name, r.area_responsavel, r.setor, 'Não informado') as assigned_department,
+                       COALESCE(g.name, r.area_responsavel, r.setor, 'Não informado') as setor,
+                       COALESCE(causador_u.name, u.name, r.responsavel) as responsavel
                 FROM rncs r
+                LEFT JOIN groups g ON (
+                    CAST(r.area_responsavel AS TEXT) = CAST(g.id AS TEXT) OR
+                    CAST(r.setor AS TEXT) = CAST(g.id AS TEXT)
+                )
+                LEFT JOIN users u ON CAST(r.responsavel AS TEXT) = CAST(u.id AS TEXT)
+                LEFT JOIN users causador_u ON r.causador_user_id = causador_u.id
                 WHERE r.is_deleted = 0 
-                AND r.status = 'Finalizado'
-                AND DATE(r.created_at) BETWEEN ? AND ?
+                {status_clause}
+                AND (r.responsavel IS NOT NULL OR r.causador_user_id IS NOT NULL)
+                AND (r.responsavel != '' OR r.causador_user_id IS NOT NULL)
+                AND CASE
+                    WHEN r.created_at LIKE '__/__/____' THEN 
+                        substr(r.created_at, 7, 4) || '-' || substr(r.created_at, 4, 2) || '-' || substr(r.created_at, 1, 2)
+                    ELSE 
+                        DATE(r.created_at)
+                END BETWEEN ? AND ?
                 ORDER BY creator_department, creator_name, r.created_at DESC
             """
             template = 'reports/by_operator_report.html'
-            stats = calculate_operator_stats_period(cursor, start_date, end_date)
+            stats = calculate_operator_stats_period(cursor, start_date, end_date, status_filter)
             
         elif report_type == 'by_sector':
-            # Relatório por setor/departamento (usando area_responsavel ou setor)
-            # CORRIGIDO: substituir r.department pela resolução dinâmica.
+            # Relatório por setor/departamento - resolve IDs numéricos via JOIN com groups
+            # Obter filtros
+            setor_filter = request.args.get('setor', 'todos')
+            valor_min = request.args.get('valor_min', '')
+            valor_max = request.args.get('valor_max', '')
+            
             query = """
                 SELECT r.*, 
-                       CASE 
-                           WHEN r.area_responsavel IS NOT NULL AND r.area_responsavel != '' THEN r.area_responsavel
-                           WHEN r.setor IS NOT NULL AND r.setor != '' THEN r.setor
-                           ELSE 'Não informado'
-                       END as creator_department,
-                       r.responsavel as creator_name,
-                       CASE 
-                           WHEN r.area_responsavel IS NOT NULL AND r.area_responsavel != '' THEN r.area_responsavel
-                           WHEN r.setor IS NOT NULL AND r.setor != '' THEN r.setor
-                           ELSE 'Não informado'
-                       END as assigned_department,
-                       r.responsavel as assigned_user_name,
-                       CASE 
-                           WHEN (r.area_responsavel = 'Engenharia' OR r.setor = 'Engenharia') THEN 'Engenharia'
-                           WHEN (r.area_responsavel = 'Qualidade' OR r.setor = 'Qualidade') THEN 'Qualidade'
-                           WHEN (r.area_responsavel = 'TI' OR r.setor = 'TI') THEN 'TI'
-                           WHEN (r.area_responsavel = 'Produção' OR r.setor = 'Produção') THEN 'Produção'
-                           WHEN (r.area_responsavel = 'Compras' OR r.setor = 'Compras') THEN 'Compras'
-                           WHEN (r.area_responsavel = 'Administração' OR r.setor = 'Administração') THEN 'Administrador'
-                           WHEN (r.area_responsavel = 'Terceiros' OR r.setor = 'Terceiros') THEN 'Terceiros'
-                           ELSE 'Outros'
-                       END as group_name
+                       COALESCE(
+                           g.name,
+                           CASE 
+                               WHEN r.area_responsavel IS NOT NULL AND r.area_responsavel != '' 
+                                   AND NOT (r.area_responsavel GLOB '[0-9]*')
+                               THEN r.area_responsavel
+                               ELSE NULL
+                           END,
+                           CASE 
+                               WHEN r.setor IS NOT NULL AND r.setor != '' 
+                                   AND NOT (r.setor GLOB '[0-9]*')
+                               THEN r.setor
+                               ELSE NULL
+                           END,
+                           'Não informado'
+                       ) as creator_department,
+                       COALESCE(u.name, r.responsavel) as creator_name,
+                       COALESCE(
+                           g.name,
+                           CASE 
+                               WHEN r.area_responsavel IS NOT NULL AND r.area_responsavel != '' 
+                                   AND NOT (r.area_responsavel GLOB '[0-9]*')
+                               THEN r.area_responsavel
+                               ELSE NULL
+                           END,
+                           CASE 
+                               WHEN r.setor IS NOT NULL AND r.setor != '' 
+                                   AND NOT (r.setor GLOB '[0-9]*')
+                               THEN r.setor
+                               ELSE NULL
+                           END,
+                           'Não informado'
+                       ) as assigned_department,
+                       COALESCE(u.name, r.responsavel) as assigned_user_name,
+                       COALESCE(u.name, r.responsavel) as responsavel,
+                       COALESCE(
+                           g.name,
+                           CASE 
+                               WHEN r.area_responsavel IS NOT NULL AND r.area_responsavel != '' 
+                                   AND NOT (r.area_responsavel GLOB '[0-9]*')
+                               THEN r.area_responsavel
+                               ELSE NULL
+                           END,
+                           CASE 
+                               WHEN r.setor IS NOT NULL AND r.setor != '' 
+                                   AND NOT (r.setor GLOB '[0-9]*')
+                               THEN r.setor
+                               ELSE NULL
+                           END,
+                           'Outros'
+                       ) as group_name
                 FROM rncs r
+                LEFT JOIN groups g ON (
+                    r.area_responsavel IS NOT NULL 
+                    AND r.area_responsavel GLOB '[0-9]*'
+                    AND CAST(r.area_responsavel AS INTEGER) = g.id
+                )
+                LEFT JOIN users u ON CAST(r.responsavel AS TEXT) = CAST(u.id AS TEXT)
                 WHERE r.is_deleted = 0 
-                AND DATE(r.created_at) BETWEEN ? AND ?
+                AND CASE
+                    WHEN r.created_at LIKE '__/__/____' THEN 
+                        substr(r.created_at, 7, 4) || '-' || substr(r.created_at, 4, 2) || '-' || substr(r.created_at, 1, 2)
+                    ELSE 
+                        DATE(r.created_at)
+                END BETWEEN ? AND ?
                 ORDER BY group_name, creator_department, r.created_at DESC
             """
             template = 'reports/by_sector_report_simple.html'
-            stats = calculate_sector_stats_period(cursor, start_date, end_date)
             
+            # Executar query
+            cursor.execute(query, (start_date, end_date))
+            rncs = cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+            rncs_list = [dict(zip(columns, rnc)) for rnc in rncs]
+            
+            # Função para normalizar setor
+            def normalizar_setor(setor_nome):
+                if setor_nome in ['Terceiros', 'Compras']:
+                    return 'Suprimentos'
+                elif setor_nome in ['Usinagem Plana', 'Usin. Cilíndrica CNC', 'Usin. Cilíndrica Convencional', 
+                                    'Balanceamento', 'Caldeiraria de Carbono', 'Caldeiraria de Inox', 
+                                    'Corte', 'Montagem', 'Pintura', 'Produção']:
+                    return 'Produção'
+                elif setor_nome == 'Não Definidos':
+                    return 'Não informado'
+                return setor_nome
+            
+            # Filtrar por setor se não for "todos"
+            if setor_filter != 'todos':
+                rncs_list = [r for r in rncs_list if normalizar_setor(r.get('group_name', 'Não informado')) == setor_filter]
+            
+            # Filtrar por valor
+            if valor_min or valor_max:
+                def get_price_value(rnc):
+                    price = rnc.get('price', 0)
+                    if price is None or price == '':
+                        return 0.0
+                    if isinstance(price, (int, float)):
+                        return float(price)
+                    # Parse BRL format
+                    s = str(price).strip()
+                    for ch in ['R$', '$', ' ', '"', "'"]:
+                        s = s.replace(ch, '')
+                    if ',' in s and '.' in s:
+                        s = s.replace('.', '').replace(',', '.')
+                    elif ',' in s:
+                        s = s.replace(',', '.')
+                    try:
+                        return float(s) if s else 0.0
+                    except:
+                        return 0.0
+                
+                if valor_min:
+                    try:
+                        min_val = float(valor_min)
+                        rncs_list = [r for r in rncs_list if get_price_value(r) >= min_val]
+                    except:
+                        pass
+                
+                if valor_max:
+                    try:
+                        max_val = float(valor_max)
+                        rncs_list = [r for r in rncs_list if get_price_value(r) <= max_val]
+                    except:
+                        pass
+            
+            # Calcular estatísticas baseadas na lista FILTRADA
+            def calculate_filtered_stats(filtered_rncs):
+                """Calcula estatísticas baseadas na lista de RNCs filtradas"""
+                total = len(filtered_rncs)
+                total_value = 0.0
+                by_status = {}
+                by_department = {}
+                
+                def parse_price(price):
+                    if price is None or price == '':
+                        return 0.0
+                    if isinstance(price, (int, float)):
+                        return float(price)
+                    s = str(price).strip()
+                    for ch in ['R$', '$', ' ', '"', "'"]:
+                        s = s.replace(ch, '')
+                    if ',' in s and '.' in s:
+                        s = s.replace('.', '').replace(',', '.')
+                    elif ',' in s:
+                        s = s.replace(',', '.')
+                    try:
+                        return float(s) if s else 0.0
+                    except:
+                        return 0.0
+                
+                for rnc in filtered_rncs:
+                    # Valor total
+                    total_value += parse_price(rnc.get('price', 0))
+                    
+                    # Por status
+                    status = rnc.get('status', 'Pendente')
+                    by_status[status] = by_status.get(status, 0) + 1
+                    
+                    # Por departamento
+                    dept = rnc.get('group_name') or rnc.get('creator_department') or 'Não informado'
+                    by_department[dept] = by_department.get(dept, 0) + 1
+                
+                return {
+                    'total_rncs': total,
+                    'total_value': total_value,
+                    'by_status': by_status,
+                    'by_department': by_department,
+                    'num_departments': len(by_department)
+                }
+            
+            stats = calculate_filtered_stats(rncs_list)
+            
+            # DEBUG
+            print(f"\n=== DEBUG RELATÓRIO POR SETOR ===")
+            print(f"Período: {start_date} a {end_date}")
+            print(f"Filtro Setor: {setor_filter}")
+            print(f"Filtro Valor Min: {valor_min}")
+            print(f"Filtro Valor Max: {valor_max}")
+            print(f"Total de RNCs: {len(rncs_list)}")
+            print(f"=================================\n")
+            
+            return_db_connection(conn)
+            
+            return render_template(template, 
+                                 rncs_list=rncs_list,
+                                 rncs=rncs_list,
+                                 stats=stats,
+                                 start_date=start_date,
+                                 end_date=end_date,
+                                 report_type=report_type,
+                                 setor_filter=setor_filter,
+                                 valor_min=valor_min,
+                                 valor_max=valor_max,
+                                 generated_at=datetime.now())
+            
+        elif report_type == 'pauta_reuniao':
+            # Relatório Pauta Reunião - JOIN com tabela GROUPS (não areas)
+            # Obter filtros
+            tipo_registro_filter = request.args.get('tipo_registro', 'ambos')  # 'ambos', 'ro', 'rnc'
+            setor_filter = request.args.get('setor', 'todos')  # 'todos' ou nome do setor
+            
+            # Mapeamento de setores consolidados para filtro SQL
+            setor_consolidado_map = {
+                'Suprimentos': ['Suprimentos', 'Terceiros', 'Compras'],
+                'Produção': ['Produção', 'Usinagem Plana', 'Usin. Cilíndrica CNC', 'Usin. Cilíndrica Convencional', 
+                             'Balanceamento', 'Caldeiraria de Carbono', 'Caldeiraria de Inox', 
+                             'Corte', 'Montagem', 'Pintura']
+            }
+            
+            # Buscar RNCs
+            query_rnc = """
+                SELECT r.*, 
+                       'RNC' as tipo_registro,
+                       r.rnc_number as numero,
+                       u.name as criador_nome,
+                       r.drawing as numero_desenho,
+                       COALESCE(causador_u.name, CAST(r.responsavel AS TEXT)) as causador_nome,
+                       COALESCE(
+                           g.name,
+                           CASE 
+                               WHEN r.area_responsavel IS NOT NULL AND r.area_responsavel != '' 
+                                   AND NOT (r.area_responsavel GLOB '[0-9]*')
+                               THEN r.area_responsavel
+                               ELSE NULL
+                           END,
+                           CASE 
+                               WHEN r.setor IS NOT NULL AND r.setor != '' 
+                                   AND NOT (r.setor GLOB '[0-9]*')
+                               THEN r.setor
+                               ELSE NULL
+                           END,
+                           'Não informado'
+                       ) as setor_ordem
+                FROM rncs r
+                LEFT JOIN groups g ON (
+                    r.area_responsavel IS NOT NULL 
+                    AND r.area_responsavel GLOB '[0-9]*'
+                    AND CAST(r.area_responsavel AS INTEGER) = g.id
+                )
+                LEFT JOIN users u ON r.user_id = u.id
+                LEFT JOIN users causador_u ON r.causador_user_id = causador_u.id
+                WHERE r.is_deleted = 0 
+                AND (
+                    CASE
+                        WHEN r.created_at LIKE '__/__/____' THEN 
+                            substr(r.created_at, 7, 4) || '-' || substr(r.created_at, 4, 2) || '-' || substr(r.created_at, 1, 2)
+                        ELSE 
+                            DATE(r.created_at)
+                    END BETWEEN ? AND ?
+                )
+            """
+            
+            # Buscar R.Os
+            query_ro = """
+                SELECT r.*, 
+                       'RO' as tipo_registro,
+                       r.ro_number as numero,
+                       r.description as description,
+                       COALESCE(
+                           g.name,
+                           CASE 
+                               WHEN r.area_responsavel IS NOT NULL AND r.area_responsavel != '' 
+                                   AND NOT (r.area_responsavel GLOB '[0-9]*')
+                               THEN r.area_responsavel
+                               ELSE NULL
+                           END,
+                           CASE 
+                               WHEN r.setor IS NOT NULL AND r.setor != '' 
+                                   AND NOT (r.setor GLOB '[0-9]*')
+                               THEN r.setor
+                               ELSE NULL
+                           END,
+                           'Não informado'
+                       ) as setor_ordem,
+                       u.name as criador_nome,
+                       COALESCE(causador_u.name, '') as causador_nome
+                FROM ros r
+                LEFT JOIN groups g ON (
+                    r.area_responsavel IS NOT NULL 
+                    AND r.area_responsavel GLOB '[0-9]*'
+                    AND CAST(r.area_responsavel AS INTEGER) = g.id
+                )
+                LEFT JOIN users u ON r.user_id = u.id
+                LEFT JOIN users causador_u ON r.causador_user_id = causador_u.id
+                WHERE r.is_deleted = 0 
+                AND (
+                    CASE
+                        WHEN r.created_at LIKE '__/__/____' THEN 
+                            substr(r.created_at, 7, 4) || '-' || substr(r.created_at, 4, 2) || '-' || substr(r.created_at, 1, 2)
+                        ELSE 
+                            DATE(r.created_at)
+                    END BETWEEN ? AND ?
+                )
+            """
+            
+            # Buscar Garantias
+            query_garantias = """
+                SELECT g.*, 
+                       'GARANTIA' as tipo_registro,
+                       g.garantia_number as numero,
+                       g.description as description,
+                       g.item_fornecido as title,
+                       g.cv as cv,
+                       g.cv_date as cv_date,
+                       g.client as client,
+                       g.equipment as equipment,
+                       g.quantity as quantity,
+                       g.sector as causador_nome,
+                       COALESCE(g.setor_causador, g.area_responsavel, 'Não informado') as setor_ordem,
+                       u.name as criador_nome
+                FROM garantias g
+                LEFT JOIN users u ON g.user_id = u.id
+                WHERE (g.is_deleted = 0 OR g.is_deleted IS NULL)
+                AND (
+                    CASE
+                        WHEN g.created_at LIKE '__/__/____' THEN 
+                            substr(g.created_at, 7, 4) || '-' || substr(g.created_at, 4, 2) || '-' || substr(g.created_at, 1, 2)
+                        ELSE 
+                            DATE(g.created_at)
+                    END BETWEEN ? AND ?
+                )
+            """
+            
+            template = 'reports/pauta_reuniao_report.html'
+            stats = {}
+            
+            rncs_list = []
+            ros_list = []
+            garantias_list = []
+            
+            # Buscar RNCs (se filtro permitir)
+            if tipo_registro_filter in ['ambos', 'rnc', 'todos']:
+                cursor.execute(query_rnc, (start_date, end_date))
+                rncs = cursor.fetchall()
+                columns_rnc = [desc[0] for desc in cursor.description]
+                rncs_list = [dict(zip(columns_rnc, rnc)) for rnc in rncs]
+            
+            # Buscar R.Os (se filtro permitir)
+            if tipo_registro_filter in ['ambos', 'ro', 'todos']:
+                cursor.execute(query_ro, (start_date, end_date))
+                ros = cursor.fetchall()
+                columns_ro = [desc[0] for desc in cursor.description]
+                ros_list = [dict(zip(columns_ro, ro)) for ro in ros]
+            
+            # Buscar Garantias (se filtro permitir)
+            if tipo_registro_filter in ['garantias', 'todos']:
+                cursor.execute(query_garantias, (start_date, end_date))
+                garantias = cursor.fetchall()
+                columns_garantias = [desc[0] for desc in cursor.description]
+                garantias_list = [dict(zip(columns_garantias, g)) for g in garantias]
+            
+            # Aplicar filtro de setor (após consolidação)
+            def normalizar_setor(setor_nome):
+                """Normaliza o nome do setor para o consolidado"""
+                if setor_nome in ['Terceiros', 'Compras']:
+                    return 'Suprimentos'
+                elif setor_nome in ['Usinagem Plana', 'Usin. Cilíndrica CNC', 'Usin. Cilíndrica Convencional', 
+                                    'Balanceamento', 'Caldeiraria de Carbono', 'Caldeiraria de Inox', 
+                                    'Corte', 'Montagem', 'Pintura', 'Produção']:
+                    return 'Produção'
+                elif setor_nome == 'Não Definidos':
+                    return 'Não informado'
+                return setor_nome
+            
+            # Filtrar por setor se não for "todos"
+            if setor_filter != 'todos':
+                rncs_list = [r for r in rncs_list if normalizar_setor(r.get('setor_ordem', 'Não informado')) == setor_filter]
+                ros_list = [r for r in ros_list if normalizar_setor(r.get('setor_ordem', 'Não informado')) == setor_filter]
+                garantias_list = [g for g in garantias_list if normalizar_setor(g.get('setor_ordem', 'Não informado')) == setor_filter]
+            
+            # Combinar RNCs, R.Os e Garantias
+            combined_list = rncs_list + ros_list + garantias_list
+            
+            # DEBUG
+            print(f"\n=== DEBUG RELATÓRIO PAUTA REUNIÃO ===")
+            print(f"Período: {start_date} a {end_date}")
+            print(f"Filtro Tipo: {tipo_registro_filter}")
+            print(f"Filtro Setor: {setor_filter}")
+            print(f"Total de RNCs encontradas: {len(rncs_list)}")
+            print(f"Total de R.Os encontradas: {len(ros_list)}")
+            print(f"Total de Garantias encontradas: {len(garantias_list)}")
+            print(f"Total combinado: {len(combined_list)}")
+            print(f"======================================\n")
+            
+            # Agrupar por setor (apenas para os tipos solicitados)
+            ro_por_setor = {}
+            rnc_por_setor = {}
+            garantias_por_setor = {}
+
+            if tipo_registro_filter in ['ambos', 'ro', 'todos']:
+                for item in ros_list:
+                    setor = normalizar_setor(item.get('setor_ordem', 'Não informado'))
+                    if setor not in ro_por_setor:
+                        ro_por_setor[setor] = []
+                    ro_por_setor[setor].append(item)
+
+            if tipo_registro_filter in ['ambos', 'rnc', 'todos']:
+                for item in rncs_list:
+                    setor = normalizar_setor(item.get('setor_ordem', 'Não informado'))
+                    if setor not in rnc_por_setor:
+                        rnc_por_setor[setor] = []
+                    rnc_por_setor[setor].append(item)
+
+            if tipo_registro_filter in ['ambos', 'garantias', 'todos']:
+                for item in garantias_list:
+                    setor = normalizar_setor(item.get('setor_ordem', 'Não informado'))
+                    if setor not in garantias_por_setor:
+                        garantias_por_setor[setor] = []
+                    garantias_por_setor[setor].append(item)
+
+            return_db_connection(conn)
+
+            # DEBUG detalhado
+            print(f"\n=== DEBUG RENDER TEMPLATE ===")
+            print(f"tipo_registro_filter: {tipo_registro_filter}")
+            print(f"len(rncs_list): {len(rncs_list)}")
+            print(f"len(ros_list): {len(ros_list)}")
+            print(f"len(garantias_list): {len(garantias_list)}")
+            print(f"rnc_por_setor keys: {list(rnc_por_setor.keys()) if rnc_por_setor else 'VAZIO'}")
+            print(f"ro_por_setor keys: {list(ro_por_setor.keys()) if ro_por_setor else 'VAZIO'}")
+            print(f"garantias_por_setor keys: {list(garantias_por_setor.keys()) if garantias_por_setor else 'VAZIO'}")
+            print(f"================================\n")
+
+            return render_template(template, 
+                                 rncs_list=combined_list,
+                                 rncs=combined_list,
+                                 ro_por_setor=ro_por_setor,
+                                 rnc_por_setor=rnc_por_setor,
+                                 garantias_por_setor=garantias_por_setor,
+                                 stats=stats,
+                                 start_date=start_date,
+                                 end_date=end_date,
+                                 report_type=report_type,
+                                 tipo_registro_filter=tipo_registro_filter,
+                                 setor_filter=setor_filter,
+                                 generated_at=datetime.now())
+        
         else:
             return "Tipo de relatório não reconhecido", 400
         
@@ -442,10 +1056,6 @@ def generate_report():
         # Obter colunas
         columns = [desc[0] for desc in cursor.description]
         rncs_list = [dict(zip(columns, rnc)) for rnc in rncs]
-        
-        # ✅ CORREÇÃO: Remover duplicatas Máquina/Funcionário com mesmo valor
-        if report_type == 'by_operator':
-            rncs_list = remove_duplicates_maquina_funcionario(rncs_list)
         
         # DEBUG: Imprimir informações sobre a consulta
         print(f"\n=== DEBUG RELATÓRIO ===")
@@ -465,9 +1075,20 @@ def generate_report():
         
         return_db_connection(conn)
         
+        # Log de auditoria - geração de relatório
+        try:
+            from services.audit import log_event
+            log_event('REPORT_GENERATE', f'Relatório {report_type} gerado ({start_date} a {end_date})',
+                      target_type='REPORT', details=f'{len(rncs_list)} RNCs',
+                      user_id=session.get('user_id'), user_name=session.get('user_name'),
+                      ip_address=request.remote_addr)
+        except Exception:
+            pass
+        
         # Renderizar template do relatório
         return render_template(template, 
-                             rncs=rncs_list, 
+                             rncs_list=rncs_list,
+                             rncs=rncs_list,
                              stats=stats,
                              start_date=start_date,
                              end_date=end_date,
@@ -515,7 +1136,12 @@ def calculate_report_stats(cursor, start_date, end_date):
             END as departamento,
             COUNT(*) 
         FROM rncs r
-        WHERE r.is_deleted = 0 AND DATE(r.created_at) BETWEEN ? AND ?
+        WHERE r.is_deleted = 0 AND CASE
+            WHEN r.created_at LIKE '__/__/____' THEN 
+                substr(r.created_at, 7, 4) || '-' || substr(r.created_at, 4, 2) || '-' || substr(r.created_at, 1, 2)
+            ELSE 
+                DATE(r.created_at)
+        END BETWEEN ? AND ?
         GROUP BY departamento
     """, (start_date, end_date))
     stats['by_department'] = dict(cursor.fetchall())
@@ -544,11 +1170,12 @@ def calculate_finalized_stats_period(cursor, start_date, end_date):
     """Calcula estatísticas dos RNCs finalizados em um período específico"""
     stats = {}
     
-    # Total de RNCs finalizados no período
+    # Total de RNCs finalizados no período (excluindo departamentos específicos)
     # CORRIGIDO: Usar created_at porque finalized_at está NULL
     cursor.execute("""
         SELECT COUNT(*) FROM rncs 
         WHERE is_deleted = 0 AND status = 'Finalizado'
+        AND COALESCE(area_responsavel, setor, '') NOT IN ('Não Definidos', 'Transporte', 'Filial', 'Usinagem plana')
         AND DATE(created_at) BETWEEN ? AND ?
     """, (start_date, end_date))
     stats['total_finalized'] = cursor.fetchone()[0]
@@ -565,7 +1192,13 @@ def calculate_finalized_stats_period(cursor, start_date, end_date):
             COUNT(*) 
         FROM rncs r
         WHERE r.is_deleted = 0 AND r.status = 'Finalizado'
-        AND DATE(r.created_at) BETWEEN ? AND ?
+        AND COALESCE(r.area_responsavel, r.setor, '') NOT IN ('Não Definidos', 'Transporte', 'Filial', 'Usinagem plana')
+        AND CASE
+            WHEN r.created_at LIKE '__/__/____' THEN 
+                substr(r.created_at, 7, 4) || '-' || substr(r.created_at, 4, 2) || '-' || substr(r.created_at, 1, 2)
+            ELSE 
+                DATE(r.created_at)
+        END BETWEEN ? AND ?
         GROUP BY departamento
     """, (start_date, end_date))
     stats['by_department'] = dict(cursor.fetchall())
@@ -574,18 +1207,35 @@ def calculate_finalized_stats_period(cursor, start_date, end_date):
     cursor.execute("""
         SELECT priority, COUNT(*) FROM rncs 
         WHERE is_deleted = 0 AND status = 'Finalizado'
+        AND COALESCE(area_responsavel, setor, '') NOT IN ('Não Definidos', 'Transporte', 'Filial', 'Usinagem plana')
         AND DATE(created_at) BETWEEN ? AND ?
         GROUP BY priority
     """, (start_date, end_date))
     stats['by_priority'] = dict(cursor.fetchall())
     
-    # Valor total dos RNCs finalizados no período
-    # CORRIGIDO: Remover 'R$', espaços, vírgulas e aspas do price antes de fazer o CAST
+    # Valor total dos RNCs finalizados no período - detecta formato
     cursor.execute("""
-        SELECT SUM(CAST(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(price, 'R$', ''), ' ', ''), ',', ''), '"', ''), '''', '') AS REAL)) FROM rncs 
+        SELECT SUM(
+            CASE 
+                WHEN price IS NULL OR TRIM(price) = '' OR price = '0' THEN 0
+                WHEN price LIKE '%,%' THEN 
+                    CAST(
+                        REPLACE(
+                            REPLACE(
+                                REPLACE(TRIM(price), 'R$', ''),
+                                '.', ''
+                            ),
+                            ',', '.'
+                        ) AS REAL
+                    )
+                ELSE 
+                    CAST(REPLACE(TRIM(price), 'R$', '') AS REAL)
+            END
+        ) as total_value
+        FROM rncs 
         WHERE is_deleted = 0 AND status = 'Finalizado'
+        AND COALESCE(area_responsavel, setor, '') NOT IN ('Não Definidos', 'Transporte', 'Filial', 'Usinagem plana')
         AND DATE(created_at) BETWEEN ? AND ?
-        AND price IS NOT NULL AND price != '' AND price != '0' AND price != '0.0'
     """, (start_date, end_date))
     result = cursor.fetchone()
     stats['total_value'] = result[0] if result[0] else 0
@@ -593,149 +1243,319 @@ def calculate_finalized_stats_period(cursor, start_date, end_date):
     return stats
 
 def calculate_total_stats_period(cursor, start_date, end_date):
-    """Calcula estatísticas para relatório total detalhado"""
+    """Calcula estatísticas para relatório total detalhado - com filtros de status e responsável"""
     stats = {}
     
+    # Filtro base igual ao relatório por operador
+    base_filter = """
+        is_deleted = 0 
+        AND status IN ('Finalizado', 'Pendente')
+        AND (responsavel IS NOT NULL OR causador_user_id IS NOT NULL)
+        AND (responsavel != '' OR causador_user_id IS NOT NULL)
+        AND CASE
+            WHEN created_at LIKE '__/__/____' THEN 
+                substr(created_at, 7, 4) || '-' || substr(created_at, 4, 2) || '-' || substr(created_at, 1, 2)
+            ELSE 
+                DATE(created_at)
+        END BETWEEN ? AND ?
+    """
+    
     # Total de RNCs no período
-    cursor.execute("""
+    cursor.execute(f"""
         SELECT COUNT(*) FROM rncs 
-        WHERE is_deleted = 0 AND DATE(created_at) BETWEEN ? AND ?
+        WHERE {base_filter}
     """, (start_date, end_date))
     stats['total_rncs'] = cursor.fetchone()[0]
     
     # RNCs por status
-    cursor.execute("""
+    cursor.execute(f"""
         SELECT status, COUNT(*) FROM rncs 
-        WHERE is_deleted = 0 AND DATE(created_at) BETWEEN ? AND ?
+        WHERE {base_filter}
         GROUP BY status
     """, (start_date, end_date))
     stats['by_status'] = dict(cursor.fetchall())
     
     # RNCs por prioridade
-    cursor.execute("""
+    cursor.execute(f"""
         SELECT priority, COUNT(*) FROM rncs 
-        WHERE is_deleted = 0 AND DATE(created_at) BETWEEN ? AND ?
+        WHERE {base_filter}
         GROUP BY priority
     """, (start_date, end_date))
     stats['by_priority'] = dict(cursor.fetchall())
     
     # RNCs por departamento
-    # CORRIGIDO: Usar area_responsavel da RNC, não u.department do usuário
     cursor.execute("""
         SELECT 
-            CASE 
-                WHEN r.area_responsavel IS NOT NULL AND r.area_responsavel != '' THEN r.area_responsavel
-                WHEN r.setor IS NOT NULL AND r.setor != '' THEN r.setor
-                ELSE 'Não informado'
-            END as departamento,
+            COALESCE(
+                g.name,
+                CASE 
+                    WHEN r.area_responsavel IS NOT NULL AND r.area_responsavel != '' 
+                        AND NOT (r.area_responsavel GLOB '[0-9]*')
+                    THEN r.area_responsavel
+                    ELSE NULL
+                END,
+                CASE 
+                    WHEN r.setor IS NOT NULL AND r.setor != '' 
+                        AND NOT (r.setor GLOB '[0-9]*')
+                    THEN r.setor
+                    ELSE NULL
+                END,
+                'Outros'
+            ) as departamento,
             COUNT(*) 
         FROM rncs r
-        WHERE r.is_deleted = 0 AND DATE(r.created_at) BETWEEN ? AND ?
+        LEFT JOIN groups g ON (
+            r.area_responsavel IS NOT NULL 
+            AND r.area_responsavel GLOB '[0-9]*'
+            AND CAST(r.area_responsavel AS INTEGER) = g.id
+        )
+        WHERE r.is_deleted = 0 
+        AND r.status IN ('Finalizado', 'Pendente')
+        AND (r.responsavel IS NOT NULL OR r.causador_user_id IS NOT NULL)
+        AND (r.responsavel != '' OR r.causador_user_id IS NOT NULL)
+        AND CASE
+            WHEN r.created_at LIKE '__/__/____' THEN 
+                substr(r.created_at, 7, 4) || '-' || substr(r.created_at, 4, 2) || '-' || substr(r.created_at, 1, 2)
+            ELSE 
+                DATE(r.created_at)
+        END BETWEEN ? AND ?
         GROUP BY departamento
     """, (start_date, end_date))
     stats['by_department'] = dict(cursor.fetchall())
     
-    # Valor total
-    # CORRIGIDO: Remover 'R$', espaços, vírgulas e aspas do price antes de fazer o CAST
+    # Valor total - detecta formato pelo conteúdo (vírgula = brasileiro, ponto = decimal)
     cursor.execute("""
-        SELECT SUM(CAST(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(price, 'R$', ''), ' ', ''), ',', ''), '"', ''), '''', '') AS REAL)) FROM rncs 
-        WHERE is_deleted = 0 AND DATE(created_at) BETWEEN ? AND ?
-        AND price IS NOT NULL AND price != '' AND price != '0' AND price != '0.0'
+        SELECT SUM(
+            CASE 
+                WHEN price IS NULL OR TRIM(price) = '' OR price = '0' THEN 0
+                WHEN price LIKE '%,%' THEN 
+                    CAST(
+                        REPLACE(
+                            REPLACE(
+                                REPLACE(TRIM(price), 'R$', ''),
+                                '.', ''
+                            ),
+                            ',', '.'
+                        ) AS REAL
+                    )
+                ELSE 
+                    CAST(REPLACE(TRIM(price), 'R$', '') AS REAL)
+            END
+        ) as total_value
+        FROM rncs 
+        WHERE is_deleted = 0 
+        AND status IN ('Finalizado', 'Pendente')
+        AND (responsavel IS NOT NULL OR causador_user_id IS NOT NULL)
+        AND (responsavel != '' OR causador_user_id IS NOT NULL)
+        AND CASE
+            WHEN created_at LIKE '__/__/____' THEN 
+                substr(created_at, 7, 4) || '-' || substr(created_at, 4, 2) || '-' || substr(created_at, 1, 2)
+            ELSE 
+                DATE(created_at)
+        END BETWEEN ? AND ?
     """, (start_date, end_date))
     result = cursor.fetchone()
     stats['total_value'] = result[0] if result[0] else 0
     
     return stats
 
-def calculate_operator_stats_period(cursor, start_date, end_date):
+def calculate_operator_stats_period(cursor, start_date, end_date, status_filter='both'):
     """Calcula estatísticas para relatório por operador"""
     stats = {}
     
-    # Total de RNCs finalizadas no período
-    cursor.execute("""
-        SELECT COUNT(*) FROM rncs 
-        WHERE is_deleted = 0 
-        AND status = 'Finalizado'
-        AND DATE(created_at) BETWEEN ? AND ?
+    # Definir filtro de status
+    if status_filter == 'finalized':
+        status_clause = "AND status = 'Finalizado'"
+    elif status_filter == 'pending':
+        status_clause = "AND status = 'Pendente'"
+    else:  # both
+        status_clause = "AND status IN ('Finalizado', 'Pendente')"
+    
+    # Total de RNCs no período
+    cursor.execute(f"""
+        SELECT COUNT(*) 
+        FROM rncs r
+        LEFT JOIN groups g ON (
+            CAST(r.area_responsavel AS TEXT) = CAST(g.id AS TEXT) OR
+            CAST(r.setor AS TEXT) = CAST(g.id AS TEXT)
+        )
+        WHERE r.is_deleted = 0 
+        {status_clause}
+        AND CASE
+            WHEN g.name IS NOT NULL THEN g.name
+            ELSE COALESCE(r.area_responsavel, r.setor, '')
+        END NOT IN ('Não Definidos', 'Transporte', 'Filial', 'Usinagem plana')
+        AND CASE
+            WHEN r.created_at LIKE '__/__/____' THEN 
+                substr(r.created_at, 7, 4) || '-' || substr(r.created_at, 4, 2) || '-' || substr(r.created_at, 1, 2)
+            ELSE 
+                DATE(r.created_at)
+        END BETWEEN ? AND ?
     """, (start_date, end_date))
     stats['total_rncs'] = cursor.fetchone()[0]
     
-    # RNCs por operador (usando r.responsavel direto se existir)
-    cursor.execute("""
+    # RNCs por operador
+    cursor.execute(f"""
         SELECT 
-            COALESCE(NULLIF(r.responsavel, ''), u.name, 'Não informado') as operador,
+            COALESCE(causador_u.name, u.name, r.responsavel) as operador,
             COUNT(*) 
         FROM rncs r
-        LEFT JOIN users u ON r.user_id = u.id
+        LEFT JOIN groups g ON (
+            CAST(r.area_responsavel AS TEXT) = CAST(g.id AS TEXT) OR
+            CAST(r.setor AS TEXT) = CAST(g.id AS TEXT)
+        )
+        LEFT JOIN users u ON CAST(r.responsavel AS TEXT) = CAST(u.id AS TEXT)
+        LEFT JOIN users causador_u ON r.causador_user_id = causador_u.id
         WHERE r.is_deleted = 0 
-        AND r.status = 'Finalizado'
-        AND DATE(r.created_at) BETWEEN ? AND ?
+        {status_clause}
+        AND (r.responsavel IS NOT NULL OR r.causador_user_id IS NOT NULL)
+        AND (r.responsavel != '' OR r.causador_user_id IS NOT NULL)
+        AND CASE
+            WHEN r.created_at LIKE '__/__/____' THEN 
+                substr(r.created_at, 7, 4) || '-' || substr(r.created_at, 4, 2) || '-' || substr(r.created_at, 1, 2)
+            ELSE 
+                DATE(r.created_at)
+        END BETWEEN ? AND ?
         GROUP BY operador
-        ORDER BY COUNT(*) DESC
+        ORDER BY 2 DESC
     """, (start_date, end_date))
     stats['by_operator'] = dict(cursor.fetchall())
 
-    # Valor por operador (sanitizando campo price que pode conter R$, vírgulas etc.)
-    cursor.execute("""
+    # Valor por operador - detecta formato pelo conteúdo
+    cursor.execute(f"""
         SELECT 
-            COALESCE(NULLIF(r.responsavel, ''), u.name, 'Não informado') as operador,
-            SUM(CAST(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(r.price, 'R$', ''), ' ', ''), ',', ''), '"', ''), '''', '') AS REAL))
+            COALESCE(causador_u.name, u.name, r.responsavel) as operador,
+            SUM(
+                CASE 
+                    WHEN r.price IS NULL OR TRIM(r.price) = '' OR r.price = '0' THEN 0
+                    WHEN r.price LIKE '%,%' THEN 
+                        CAST(
+                            REPLACE(
+                                REPLACE(
+                                    REPLACE(TRIM(r.price), 'R$', ''),
+                                    '.', ''
+                                ),
+                                ',', '.'
+                            ) AS REAL
+                        )
+                    ELSE 
+                        CAST(REPLACE(TRIM(r.price), 'R$', '') AS REAL)
+                END
+            )
         FROM rncs r
-        LEFT JOIN users u ON r.user_id = u.id
+        LEFT JOIN groups g ON (
+            CAST(r.area_responsavel AS TEXT) = CAST(g.id AS TEXT) OR
+            CAST(r.setor AS TEXT) = CAST(g.id AS TEXT)
+        )
+        LEFT JOIN users u ON CAST(r.responsavel AS TEXT) = CAST(u.id AS TEXT)
+        LEFT JOIN users causador_u ON r.causador_user_id = causador_u.id
         WHERE r.is_deleted = 0 
-        AND r.status = 'Finalizado'
-        AND DATE(r.created_at) BETWEEN ? AND ?
-          AND r.price IS NOT NULL AND r.price != '' AND r.price NOT IN ('0','0.0')
+        {status_clause}
+        AND (r.responsavel IS NOT NULL OR r.causador_user_id IS NOT NULL)
+        AND (r.responsavel != '' OR r.causador_user_id IS NOT NULL)
+        AND CASE
+            WHEN r.created_at LIKE '__/__/____' THEN 
+                substr(r.created_at, 7, 4) || '-' || substr(r.created_at, 4, 2) || '-' || substr(r.created_at, 1, 2)
+            ELSE 
+                DATE(r.created_at)
+        END BETWEEN ? AND ?
         GROUP BY operador
-        ORDER BY SUM(CAST(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(r.price, 'R$', ''), ' ', ''), ',', ''), '"', ''), '''', '') AS REAL)) DESC
+        ORDER BY 2 DESC
     """, (start_date, end_date))
     stats['value_by_operator'] = dict(cursor.fetchall())
     
     return stats
 
 def calculate_sector_stats_period(cursor, start_date, end_date):
-    """Calcula estatísticas para relatório por setor"""
+    """Calcula estatísticas para relatório por setor - com filtros de status e responsável"""
     stats = {}
     
+    # Filtro base igual ao relatório por operador
+    base_filter = """
+        r.is_deleted = 0 
+        AND r.status IN ('Finalizado', 'Pendente')
+        AND (r.responsavel IS NOT NULL OR r.causador_user_id IS NOT NULL)
+        AND (r.responsavel != '' OR r.causador_user_id IS NOT NULL)
+        AND CASE
+            WHEN r.created_at LIKE '__/__/____' THEN 
+                substr(r.created_at, 7, 4) || '-' || substr(r.created_at, 4, 2) || '-' || substr(r.created_at, 1, 2)
+            ELSE 
+                DATE(r.created_at)
+        END BETWEEN ? AND ?
+    """
+    
     # Total de RNCs no período
-    cursor.execute("""
-        SELECT COUNT(*) FROM rncs 
-        WHERE is_deleted = 0 AND DATE(created_at) BETWEEN ? AND ?
+    cursor.execute(f"""
+        SELECT COUNT(*) FROM rncs r
+        WHERE {base_filter}
     """, (start_date, end_date))
     stats['total_rncs'] = cursor.fetchone()[0]
     
-    # RNCs por setor (usando area_responsavel ou setor)
+    # RNCs por setor (resolvendo IDs numéricos via JOIN com groups)
     dept_case = """
-        CASE 
-            WHEN r.area_responsavel IS NOT NULL AND r.area_responsavel != '' THEN r.area_responsavel
-            WHEN r.setor IS NOT NULL AND r.setor != '' THEN r.setor
-            ELSE 'Não informado'
-        END
+        COALESCE(
+            g.name,
+            CASE 
+                WHEN r.area_responsavel IS NOT NULL AND r.area_responsavel != '' 
+                    AND NOT (r.area_responsavel GLOB '[0-9]*')
+                THEN r.area_responsavel
+                ELSE NULL
+            END,
+            CASE 
+                WHEN r.setor IS NOT NULL AND r.setor != '' 
+                    AND NOT (r.setor GLOB '[0-9]*')
+                THEN r.setor
+                ELSE NULL
+            END,
+            'Outros'
+        )
     """
     cursor.execute(f"""
         SELECT {dept_case} as departamento, COUNT(*) FROM rncs r
-        WHERE r.is_deleted = 0 AND DATE(r.created_at) BETWEEN ? AND ?
+        LEFT JOIN groups g ON (
+            r.area_responsavel IS NOT NULL 
+            AND r.area_responsavel GLOB '[0-9]*'
+            AND CAST(r.area_responsavel AS INTEGER) = g.id
+        )
+        WHERE {base_filter}
         GROUP BY departamento
         ORDER BY COUNT(*) DESC
     """, (start_date, end_date))
     stats['by_sector'] = dict(cursor.fetchall())
     
-    # Valor por setor (sanitizando price)
+    # Valor por setor - detecta formato pelo conteúdo
     cursor.execute(f"""
         SELECT {dept_case} as departamento, 
-               SUM(CAST(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(r.price, 'R$', ''), ' ', ''), ',', ''), '"', ''), '''', '') AS REAL)) 
+               SUM(
+                   CASE 
+                       WHEN r.price LIKE '%,%' THEN 
+                           CAST(REPLACE(REPLACE(REPLACE(TRIM(r.price), 'R$', ''), '.', ''), ',', '.') AS REAL)
+                       ELSE 
+                           CAST(REPLACE(TRIM(r.price), 'R$', '') AS REAL)
+                   END
+               )
         FROM rncs r
-        WHERE r.is_deleted = 0 AND DATE(r.created_at) BETWEEN ? AND ?
+        LEFT JOIN groups g ON (
+            r.area_responsavel IS NOT NULL 
+            AND r.area_responsavel GLOB '[0-9]*'
+            AND CAST(r.area_responsavel AS INTEGER) = g.id
+        )
+        WHERE {base_filter}
           AND r.price IS NOT NULL AND r.price != '' AND r.price NOT IN ('0','0.0')
         GROUP BY departamento
-        ORDER BY SUM(CAST(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(r.price, 'R$', ''), ' ', ''), ',', ''), '"', ''), '''', '') AS REAL)) DESC
+        ORDER BY 2 DESC
     """, (start_date, end_date))
     stats['value_by_sector'] = dict(cursor.fetchall())
     
     # RNCs por status por setor
     cursor.execute(f"""
         SELECT {dept_case} as departamento, r.status, COUNT(*) FROM rncs r
-        WHERE r.is_deleted = 0 AND DATE(r.created_at) BETWEEN ? AND ?
+        LEFT JOIN groups g ON (
+            r.area_responsavel IS NOT NULL 
+            AND r.area_responsavel GLOB '[0-9]*'
+            AND CAST(r.area_responsavel AS INTEGER) = g.id
+        )
+        WHERE {base_filter}
         GROUP BY departamento, r.status
     """, (start_date, end_date))
     sector_status = cursor.fetchall()

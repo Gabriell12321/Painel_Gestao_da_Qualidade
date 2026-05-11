@@ -26,8 +26,8 @@ def test_blueprint():
 EMAIL_CONFIG = {
     'smtp_server': os.getenv('SMTP_SERVER', 'smtp.gmail.com'),  # Para Outlook: use 'smtp-mail.outlook.com'
     'smtp_port': int(os.getenv('SMTP_PORT', 587)),
-    'email': os.getenv('SMTP_USER', 'seu-email@gmail.com'),
-    'password': os.getenv('SMTP_PASS', 'sua-senha-de-app')
+    'email': os.getenv('SMTP_USER', ''),
+    'password': os.getenv('SMTP_PASS', '')
 }
 
 # Para Outlook/Hotmail, descomente as linhas abaixo:

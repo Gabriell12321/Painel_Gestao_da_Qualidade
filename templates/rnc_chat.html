@@ -851,6 +851,27 @@
                             {% endif %}
                             <span class="message-time">{{ message[5].split(' ')[1][:5] if message[5] else '' }}</span>
                         </div>
+                        
+                        {# Renderizar imagem ou arquivo se existir file_url #}
+                        {% if message|length > 10 and message[10] %}
+                            {% if message[4] == 'image' %}
+                            <div class="message-image-container">
+                                <img src="{{ message[10] }}" 
+                                     alt="{{ message[9] if message|length > 9 else 'Imagem' }}" 
+                                     class="message-image" 
+                                     style="max-width: 300px; max-height: 300px; border-radius: 8px; cursor: pointer; margin-top: 8px;"
+                                     onclick="window.open('{{ message[10] }}', '_blank')">
+                            </div>
+                            {% elif message[4] == 'file' %}
+                            <div class="message-file-container">
+                                <a href="{{ message[10] }}" download="{{ message[9] if message|length > 9 else 'arquivo' }}" class="message-file-link">
+                                    <span class="file-icon">📄</span>
+                                    <span class="file-name">{{ message[9] if message|length > 9 else 'Baixar arquivo' }}</span>
+                                </a>
+                            </div>
+                            {% endif %}
+                        {% endif %}
+                        
                         <div class="message-text">{{ message[3] }}</div>
                         
                         {# 👁️ Status de visualização estilo WhatsApp - só para mensagens próprias #}
@@ -974,17 +995,23 @@
         // Variáveis globais - inicializadas primeiro
         let isTyping = false;
         let typingTimeout;
-        let lastAckAt = 0; // controle de ACK do socket
+        let lastAckAt = 0;
         let selectedFile = null;
         let selectedImage = null;
         let isRecording = false;
         let mediaRecorder = null;
         let audioChunks = [];
         
+        // Controle de mensagens duplicadas
+        let processedMessageIds = new Set();
+        let isSending = false;
+        let lastSentMessage = '';
+        let lastSentTime = 0;
+        
         // Elementos do DOM - inicializados após DOM carregar
         let chatMessages, messageInput, sendBtn, typingIndicator, typingText;
-    let socket, root, rncId, rncNumber, currentUserId, currentUserName, currentUserDept, isAdmin;
-    let notificationSocket;
+        let socket, root, rncId, rncNumber, currentUserId, currentUserName, currentUserDept, isAdmin;
+        let notificationSocket;
         
     // Inicialização do chat com Socket.IO e notificações
     function initializeChat() {
@@ -1006,19 +1033,9 @@
                 currentUserName: currentUserName
             });
             
-            // Testar conectividade Socket.IO antes de inicializar
-            testSocketIOConnectivity().then(() => {
-                // Inicializar Socket.IO
-                initializeSocket();
-
-                // Inicializar Socket.IO para notificações
-                initializeNotificationSocket();
-            }).catch(error => {
-                console.warn('⚠️ Teste de conectividade falhou, continuando com inicialização:', error);
-                // Inicializar mesmo assim
-                initializeSocket();
-                initializeNotificationSocket();
-            });
+            // Conectar Socket.IO imediatamente sem testes
+            initializeSocket();
+            initializeNotificationSocket();
         
         // Teste de conectividade Socket.IO
         async function testSocketIOConnectivity() {
@@ -1054,23 +1071,18 @@
                 console.log('🔔 Inicializando Socket.IO notificações:', socketUrl, isHTTPS ? '(HTTPS)' : '(HTTP)');
                 
                 notificationSocket = io(socketUrl + '/notifications', {
-                    // Configuração específica para HTTPS
-                    transports: isHTTPS ? ['polling', 'websocket'] : ['websocket', 'polling'],
+                    transports: ['polling', 'websocket'],
                     path: '/socket.io/',
                     reconnection: true,
-                    reconnectionAttempts: 8,
-                    reconnectionDelay: isHTTPS ? 2000 : 1000,
-                    reconnectionDelayMax: isHTTPS ? 8000 : 5000,
-                    timeout: isHTTPS ? 15000 : 10000,
+                    reconnectionAttempts: 5,
+                    reconnectionDelay: 1000,
+                    reconnectionDelayMax: 5000,
+                    timeout: 10000,
                     forceNew: false,
-                    // Configurações específicas para HTTPS/SSL
                     upgrade: true,
                     rememberUpgrade: true,
-                    // Polling interval otimizado para HTTPS
-                    pollingTimeout: isHTTPS ? 10000 : 30000,
-                    // Configuração de segurança para HTTPS
                     secure: isHTTPS,
-                    rejectUnauthorized: false // Para certificados auto-assinados
+                    rejectUnauthorized: false
                 });
                 setupNotificationSocketEvents();
             } catch (error) {
@@ -1161,23 +1173,18 @@
                 console.log('🔌 Conectando ao Socket.IO:', socketUrl, isHTTPS ? '(HTTPS)' : '(HTTP)');
                 
                 socket = io(socketUrl, {
-                    // Configuração específica para HTTPS
-                    transports: isHTTPS ? ['polling', 'websocket'] : ['websocket', 'polling'],
+                    transports: ['polling', 'websocket'],
                     path: '/socket.io/',
                     reconnection: true,
-                    reconnectionAttempts: 8,
-                    reconnectionDelay: isHTTPS ? 2000 : 1000,
-                    reconnectionDelayMax: isHTTPS ? 8000 : 5000,
-                    timeout: isHTTPS ? 15000 : 10000,
+                    reconnectionAttempts: 5,
+                    reconnectionDelay: 1000,
+                    reconnectionDelayMax: 5000,
+                    timeout: 10000,
                     forceNew: false,
-                    // Configurações específicas para HTTPS/SSL
                     upgrade: true,
                     rememberUpgrade: true,
-                    // Polling interval otimizado para HTTPS
-                    pollingTimeout: isHTTPS ? 10000 : 30000,
-                    // Configuração de segurança para HTTPS
                     secure: isHTTPS,
-                    rejectUnauthorized: false // Para certificados auto-assinados
+                    rejectUnauthorized: false
                 });
                 
                 setupSocketEvents();
@@ -1190,28 +1197,19 @@
         function setupSocketEvents() {
             socket.on('connect', function() {
                 const isHTTPS = window.location.protocol === 'https:';
-                console.log('✅ Socket.IO conectado com sucesso!');
-                console.log('🔌 Socket ID:', socket.id);
-                console.log('🔐 Protocolo:', isHTTPS ? 'HTTPS/WSS' : 'HTTP/WS');
+                console.log('✅ Socket.IO conectado:', socket.id);
                 console.log('🚀 Transport:', socket.io.engine.transport.name);
-                console.log('🏠 RNC ID:', rncId);
-                console.log(`🔗 Entrando na sala: rnc_${rncId}`);
                 
-                // Entrar na sala do RNC
                 socket.emit('join_room', { room: `rnc_${rncId}` });
-                console.log('📤 Evento join_room emitido para sala:', `rnc_${rncId}`);
-                
-                // Toast de sucesso
-                showSuccessToast(`🔌 Socket.IO conectado via ${socket.io.engine.transport.name.toUpperCase()}`);
+                showSuccessToast(`🔌 Conectado via ${socket.io.engine.transport.name.toUpperCase()}`);
             });
             
             socket.on('room_joined', function(data) {
-                console.log('✅ Entrou na sala com sucesso:', data);
+                console.log('✅ Sala:', data);
             });
             
             socket.on('user_joined_room', function(data) {
-                console.log('👤 Outro usuário entrou na sala:', data.user_name, data.user_id);
-                showSuccessToast(`👤 ${data.user_name} entrou no chat`);
+                showSuccessToast(`👤 ${data.user_name} entrou`);
             });
             
             socket.on('disconnect', function() {
@@ -1219,75 +1217,29 @@
             });
             
             socket.on('connect_error', function(error) {
-                console.error('❌ Erro de conexão Socket.IO:', error);
-                console.log('🔍 Diagnóstico de conectividade:');
-                console.log('   - Protocolo:', window.location.protocol);
-                console.log('   - Host:', window.location.host);
-                console.log('   - HTTPS:', window.location.protocol === 'https:');
-                console.log('   - Socket URL:', socket.io.uri);
-                console.log('   - Transports:', socket.io.opts.transports);
-                console.log('   - Timeout:', socket.io.opts.timeout);
-                
-                // Mostrar toast de erro mais informativo
-                showErrorToast(`❌ Socket.IO: ${error.description || error.message || 'Erro de conexão'}`);
+                console.error('❌ Erro Socket.IO:', error.message);
+                showErrorToast(`❌ Erro de conexão`);
             });
             
             socket.on('reconnect', function() {
-                console.log('🔄 Socket.IO reconectado - entrando na sala novamente');
+                console.log('🔄 Reconectado');
                 socket.emit('join_room', { room: `rnc_${rncId}` });
             });
             
-            // Eventos específicos para diagnosticar problemas HTTPS/WSS
-            socket.io.on('upgrade', function() {
-                console.log('⬆️ Socket.IO upgrade para WebSocket realizado!');
-                showSuccessToast('⬆️ Upgrade para WebSocket realizado');
-            });
-            
-            socket.io.on('upgradeError', function(error) {
-                console.warn('⚠️ Erro no upgrade para WebSocket:', error);
-                showErrorToast('⚠️ Falha no upgrade para WebSocket, usando polling');
-            });
-            
-            // DEBUG: Capturar TODOS os eventos
-            socket.onAny(function(eventName, ...args) {
-                console.log(`📡 Evento Socket.IO: ${eventName}`, args);
-                
-                // Teste específico para new_message
-                if (eventName === 'new_message') {
-                    console.log('🎯 EVENTO new_message DETECTADO!', args);
-                }
-            });
-            
             socket.on('new_message', function(messageData) {
-                console.log('📨 ========================================');
-                console.log('📨 NOVA MENSAGEM RECEBIDA VIA SOCKET.IO!');
-                console.log('📊 Dados da mensagem:', messageData);
-                console.log(`👤 Mensagem de user_id: ${messageData.user_id}, eu sou: ${currentUserId}`);
-                console.log(`💬 Conteúdo: "${messageData.message}"`);
-                console.log(`⏰ Timestamp: ${messageData.timestamp}`);
-                console.log('📨 ========================================');
-                
-                // Servidor já filtra para não enviar para o remetente (include_self=False)
-                // Então sempre adicionar a mensagem recebida via Socket.IO
-                console.log('🔊 Tocando som de notificação');
-                SoundSystem.incoming(); // 🔊 Som de mensagem recebida
-                playNotificationSound(); // Manter compatibilidade
-                console.log('➕ Adicionando mensagem à interface');
+                if (messageData.user_id != currentUserId) {
+                    SoundSystem.incoming();
+                }
                 addMessage(messageData);
-                console.log('✅ Mensagem adicionada com sucesso!');
             });
             
             // Listener message_sent removido - agora é gerenciado dinamicamente em sendMessageSocket
             
             socket.on('error', function(data) {
-                console.error('❌ Erro do Socket.IO:', data);
-                // Se for "Mensagem já processada", não mostrar erro
+                console.error('❌ Erro:', data);
                 if (data.message && data.message.includes('Mensagem já processada')) {
-                    console.log('⚠️ Mensagem já processada via Socket.IO, usando HTTP...');
                     return;
                 }
-                // Para outros erros, não mostrar alert - o timeout HTTP vai funcionar como fallback
-                console.log('⚠️ Socket.IO falhou, aguardando timeout para HTTP...');
             });
         }
         
@@ -1355,7 +1307,7 @@
 
         // Função para enviar mensagem
         async function sendMessage() {
-            // 🔒 PROTEÇÃO: Bloquear envio se RNC estiver finalizada
+            // Proteção RNC finalizada
             {% if rnc.status == 'Finalizado' %}
             console.log('🔒 RNC finalizada - envio bloqueado');
             showErrorToast('❌ Esta RNC foi finalizada. Não é possível enviar mensagens.');
@@ -1365,104 +1317,65 @@
             
             const message = messageInput.value.trim();
             if (!message && !selectedFile && !selectedImage) {
-                console.log('⚠️ Tentativa de enviar mensagem vazia');
-                SoundSystem.warning(); // 🔊 Som de aviso
+                SoundSystem.warning();
                 return;
             }
             
-            // Verificar se é uma mensagem duplicada muito rápida (apenas para texto)
+            // Debounce - bloquear envios rápidos
+            if (isSending) {
+                showErrorToast('⚠️ Aguarde o envio anterior concluir');
+                SoundSystem.warning();
+                return;
+            }
+            
             const now = Date.now();
             if (message === lastSentMessage && (now - lastSentTime) < 3000 && !selectedImage && !selectedFile) {
-                console.log('⚠️ Tentativa de envio duplicado muito rápido, ignorando');
-                showSuccessToast('⚠️ Aguarde antes de enviar a mesma mensagem');
-                SoundSystem.warning(); // 🔊 Som de aviso
+                showErrorToast('⚠️ Mensagem duplicada, aguarde 3s');
+                SoundSystem.warning();
                 return;
             }
             
-            // 🔊 Som de envio
+            isSending = true;
             SoundSystem.send();
             
-            // Atualizar controle de envio APENAS para mensagens de texto
             if (!selectedImage && !selectedFile) {
                 lastSentMessage = message;
                 lastSentTime = now;
-            } else {
-                // Para imagens/arquivos, limpar o controle para não interferir
-                lastSentMessage = '';
-                lastSentTime = 0;
             }
             
-            // LIMPAR CAMPO IMEDIATAMENTE para evitar duplo clique
+            const originalMessage = message;
             messageInput.value = '';
             messageInput.innerHTML = '';
             messageInput.textContent = '';
             updateCharCounter();
             
-            // DESABILITAR BOTÃO IMEDIATAMENTE
             sendBtn.disabled = true;
             sendBtn.innerHTML = '⏳ Enviando...';
-            
-            // FORÇAR LIMPEZA ADICIONAL
-            setTimeout(() => {
-                messageInput.value = '';
-                messageInput.innerHTML = '';
-                messageInput.textContent = '';
-                updateCharCounter();
-            }, 50);
-
-            console.log('🚀 Iniciando envio de mensagem...');
-            console.log('📊 Estado atual:', {
-                rncId: rncId,
-                currentUserId: currentUserId,
-                socket_connected: socket ? socket.connected : false,
-                message_length: message.length,
-                has_image: !!selectedImage,
-                has_file: !!selectedFile
-            });
-
-            // Desabilitar botão durante envio
-            sendBtn.disabled = true;
-            sendBtn.innerHTML = '📤 Enviando...';
 
             try {
-                // Se houver imagem ou arquivo, sempre usar HTTP com FormData
                 if (selectedImage || selectedFile) {
-                    console.log('📎 Enviando com anexo via HTTP (FormData)');
-                    await sendMessageHttp(message);
+                    await sendMessageHttp(originalMessage);
                 } else if (socket && socket.connected) {
-                    console.log('📡 Enviando mensagem via Socket.IO');
-                    await sendMessageSocket(message);
+                    await sendMessageSocket(originalMessage);
                 } else {
-                    console.log('📡 Socket.IO não disponível, usando HTTP');
-                    await sendMessageHttp(message);
+                    await sendMessageHttp(originalMessage);
                 }
             } catch (error) {
-                console.error('❌ Erro ao enviar mensagem:', error);
-                SoundSystem.error(); // 🔊 Som de erro
-                showErrorToast('❌ Erro ao enviar mensagem. Tente novamente.');
+                console.error('❌ Erro ao enviar:', error);
+                SoundSystem.error();
+                showErrorToast('❌ Erro ao enviar. Tente novamente.');
+                messageInput.value = originalMessage;
             } finally {
-                // Limpar preview de arquivo
                 clearFilePreview();
-
-                // Reabilitar botão
-                setTimeout(() => {
-                    sendBtn.disabled = false;
-                    sendBtn.innerHTML = '📤 Enviar';
-                }, 1000);
+                isSending = false;
+                sendBtn.disabled = false;
+                sendBtn.innerHTML = '📤 Enviar';
             }
         }
         
         // Enviar mensagem via Socket.IO
         async function sendMessageSocket(text) {
             return new Promise((resolve, reject) => {
-                console.log('📤 ========================================');
-                console.log('📤 ENVIANDO MENSAGEM VIA SOCKET.IO');
-                console.log('📊 RNC ID:', rncId);
-                console.log('💬 Texto:', text);
-                console.log('👤 User ID:', currentUserId);
-                console.log('📤 ========================================');
-                
-                // Gerar ID único para a mensagem
                 const messageId = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
                 
                 const messageData = {
@@ -1472,32 +1385,31 @@
                     message_id: messageId
                 };
                 
-                // NÃO adicionar mensagem localmente - aguardar confirmação do servidor
-                console.log('⏳ Aguardando confirmação do servidor antes de adicionar mensagem...');
+                console.log('📤 Enviando via Socket.IO:', messageData);
                 
-                // Enviar via Socket.IO
-                console.log('📡 Emitindo evento send_message via Socket.IO');
-                socket.emit('send_message', messageData);
-                
-                // Variável para controlar se já foi processada
                 let messageProcessed = false;
+                let timeoutHandle = null;
                 
-                // Aguardar confirmação via evento 'message_sent'
                 const messageSentHandler = function(response) {
+                    console.log('📨 Resposta message_sent recebida:', response);
+                    
                     if (messageProcessed) {
-                        console.log('⚠️ Mensagem já processada, ignorando confirmação duplicada');
+                        console.warn('⚠️ Mensagem já processada, ignorando resposta duplicada');
                         return;
                     }
                     
-                    console.log('📨 Confirmação recebida via message_sent:', response);
-                    if (response && response.success) {
+                    if (response && response.success && response.message_id) {
                         messageProcessed = true;
-                        console.log('✅ Mensagem enviada via Socket.IO com sucesso!');
                         
-                        // ✅ CORREÇÃO: Adicionar mensagem imediatamente para melhor UX
-                        console.log('➕ Adicionando mensagem própria à interface...');
+                        // Cancelar timeout se existir
+                        if (timeoutHandle) {
+                            clearTimeout(timeoutHandle);
+                        }
+                        
+                        console.log('✅ Processando resposta com message_id:', response.message_id);
+                        
                         const ownMessageData = {
-                            id: response.message_id || Date.now(),
+                            id: response.message_id,
                             rnc_id: rncId,
                             user_id: currentUserId,
                             message: text,
@@ -1506,35 +1418,40 @@
                             user_name: currentUserName || 'Você',
                             department: currentUserDept || ''
                         };
-                        addMessage(ownMessageData);
                         
-                        showSuccessToast('✅ Mensagem enviada com sucesso!');
-                        SoundSystem.success(); // 🔊 Som de sucesso
-                        socket.off('message_sent', messageSentHandler); // Remover listener
+                        console.log('➕ Adicionando mensagem própria via Socket.IO:', ownMessageData);
+                        addMessage(ownMessageData);
+                        console.log('✅ Mensagem Socket.IO adicionada com sucesso!');
+                        
+                        showSuccessToast('✅ Mensagem enviada!');
+                        SoundSystem.success();
+                        socket.off('message_sent', messageSentHandler);
                         resolve(response);
                     } else {
-                        console.error('❌ Erro na confirmação:', response);
-                        socket.off('message_sent', messageSentHandler); // Remover listener
-                        reject(new Error(response?.message || 'Erro ao enviar mensagem'));
+                        console.error('❌ Resposta inválida:', response);
+                        socket.off('message_sent', messageSentHandler);
+                        
+                        // Tentar HTTP como fallback
+                        console.warn('⚠️ Socket.IO falhou, usando HTTP...');
+                        sendMessageHttp(text, messageId).then(resolve).catch(reject);
                     }
                 };
                 
                 socket.on('message_sent', messageSentHandler);
+                socket.emit('send_message', messageData);
+                console.log('📡 Evento send_message emitido');
                 
-                // Timeout para fallback HTTP otimizado para HTTPS
-                const isHTTPS = window.location.protocol === 'https:';
-                const timeoutMs = isHTTPS ? 5000 : 2000; // Mais tempo para HTTPS
-                
-                setTimeout(() => {
+                // Timeout reduzido para 1 segundo
+                timeoutHandle = setTimeout(() => {
                     if (messageProcessed) {
-                        console.log('✅ Mensagem já processada via Socket.IO, ignorando timeout HTTP');
+                        console.log('✅ Mensagem já processada via Socket.IO, ignorando timeout');
                         return;
                     }
-                    
-                    console.warn(`⚠️ Timeout Socket.IO após ${timeoutMs}ms (${isHTTPS ? 'HTTPS' : 'HTTP'}), tentando HTTP...`);
-                    socket.off('message_sent', messageSentHandler); // Remover listener
+                    console.warn('⏱️ Timeout Socket.IO após 1s, usando HTTP...');
+                    messageProcessed = true; // Marcar como processado para evitar duplicação
+                    socket.off('message_sent', messageSentHandler);
                     sendMessageHttp(text, messageId).then(resolve).catch(reject);
-                }, timeoutMs);
+                }, 1000);
             });
         }
 
@@ -1807,76 +1724,73 @@
 
         // Função para adicionar mensagem na interface
         function addMessage(messageData) {
-            console.log('🔍 ========================================');
-            console.log('🔍 addMessage CHAMADO');
-            console.log('📊 messageData:', messageData);
-            console.log('  - ID:', messageData.id);
-            console.log('  - user_id:', messageData.user_id, '(eu sou:', currentUserId + ')');
-            console.log('  - message_type:', messageData.message_type);
-            console.log('  - file_path:', messageData.file_path);
-            console.log('  - message:', messageData.message);
-            console.log('🔍 ========================================');
+            console.log('🔍 addMessage CHAMADO com:', messageData);
+            console.log('🔍 message_type:', messageData.message_type);
+            console.log('🔍 file_url:', messageData.file_url);
+            console.log('🔍 file_name:', messageData.file_name);
             
-            // Verificar se a mensagem já existe antes de adicionar
-            const existingMsg = document.querySelector(`[data-message-id="${messageData.id}"]`);
-            if (existingMsg) {
-                console.log('⚠️ ❌ BLOQUEADO: Mensagem duplicada, ignorando:', messageData.id);
+            if (!messageData || !messageData.id) {
+                console.error('❌ Dados de mensagem inválidos:', messageData);
                 return;
             }
-            console.log('✅ Mensagem não existe no DOM, prosseguindo...');
             
-            // Verificação de duplicação removida - deixar apenas a verificação por ID
-            // Isso evita problemas com mensagens não aparecendo
+            // Verificar duplicata no DOM (mais confiável)
+            const existingMsg = document.querySelector(`[data-message-id="${messageData.id}"]`);
+            if (existingMsg) {
+                console.warn('⚠️ Mensagem já existe no DOM:', messageData.id);
+                return;
+            }
+            
+            // Para mensagens de outros usuários (polling), verificar Set
+            if (messageData.user_id != currentUserId && processedMessageIds.has(messageData.id)) {
+                console.warn('⚠️ Mensagem de outro usuário já processada (ID no Set):', messageData.id);
+                return;
+            }
             
             console.log('✅ Adicionando mensagem ao DOM...');
+            processedMessageIds.add(messageData.id);
             
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${messageData.user_id == currentUserId ? 'own' : ''} fade-in`;
             messageDiv.dataset.messageId = messageData.id;
             messageDiv.dataset.userId = messageData.user_id;
             
-            // Atualizar o último ID de mensagem carregada
             updateLastMessageId(messageData.id);
             
             const avatar = messageData.user_name ? messageData.user_name[0].toUpperCase() : 'U';
             
-            // Construir conteúdo da mensagem baseado no tipo
             let messageContent = '';
             
-            if (messageData.message_type === 'image' && messageData.file_path) {
-                // Mensagem com imagem
+            if (messageData.message_type === 'image' && messageData.file_url) {
                 messageContent = `
-                    ${messageData.message ? `<div class="message-text">${messageData.message}</div>` : ''}
+                    ${messageData.message ? `<div class="message-text">${escapeHtml(messageData.message)}</div>` : ''}
                     <div class="message-image">
-                        <img src="${messageData.file_path}" 
-                             alt="Imagem" 
+                        <img src="${messageData.file_url}" 
+                             alt="${escapeHtml(messageData.file_name || 'Imagem')}" 
                              style="max-width: 300px; max-height: 300px; border-radius: 8px; cursor: pointer; margin-top: 8px;"
-                             onclick="window.open('${messageData.file_path}', '_blank')">
+                             onclick="window.open('${messageData.file_url}', '_blank')">
                     </div>
                 `;
-            } else if (messageData.message_type === 'file' && messageData.file_path) {
-                // Mensagem com arquivo
-                const fileName = messageData.file_path.split('/').pop();
+            } else if (messageData.message_type === 'file' && messageData.file_url) {
+                const fileName = messageData.file_name || 'Arquivo';
                 messageContent = `
-                    ${messageData.message ? `<div class="message-text">${messageData.message}</div>` : ''}
+                    ${messageData.message ? `<div class="message-text">${escapeHtml(messageData.message)}</div>` : ''}
                     <div class="message-file" style="margin-top: 8px;">
-                        <a href="${messageData.file_path}" 
-                           download 
+                        <a href="${messageData.file_url}" 
+                           download="${escapeHtml(fileName)}"
                            style="display: flex; align-items: center; gap: 10px; padding: 10px; background: #f0f0f0; border-radius: 8px; text-decoration: none; color: #333;">
                             <span style="font-size: 24px;">📎</span>
                             <div>
-                                <div style="font-weight: 600;">${fileName}</div>
+                                <div style="font-weight: 600;">${escapeHtml(fileName)}</div>
                                 <div style="font-size: 12px; color: #666;">Clique para baixar</div>
                             </div>
                         </a>
                     </div>
                 `;
             } else {
-                // Mensagem de texto normal
-                messageContent = `<div class="message-text">${messageData.message}</div>`;
+                messageContent = `<div class="message-text">${escapeHtml(messageData.message)}</div>`;
             }
             
-        // Determinar status de visualização (estilo WhatsApp)
             let statusClass = 'status-sent';
             let statusIcon = '✓';
             let viewedInfo = '';
@@ -1891,12 +1805,12 @@
                 statusIcon = '✓✓';
             }
 
-        messageDiv.innerHTML = `
+            messageDiv.innerHTML = `
                 <div class="message-avatar">${avatar}</div>
                 <div class="message-content">
                     <div class="message-header">
-                        <span class="message-author">${messageData.user_name || 'Usuário'}</span>
-                        ${messageData.department ? `<span class=\"message-department\">${messageData.department}</span>` : ''}
+                        <span class="message-author">${escapeHtml(messageData.user_name || 'Usuário')}</span>
+                        ${messageData.department ? `<span class="message-department">${escapeHtml(messageData.department)}</span>` : ''}
                         <span class="message-time">${new Date(messageData.created_at).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'})}</span>
                     </div>
                     ${messageContent}
@@ -1911,23 +1825,24 @@
                 </div>
             `;
 
-            // Remover estado vazio se existir
             const emptyState = chatMessages.querySelector('.empty-state');
             if (emptyState) {
                 emptyState.remove();
             }
 
             chatMessages.appendChild(messageDiv);
-            
-            // Logs de confirmação
-            console.log('✅ Mensagem adicionada ao chatMessages');
+            console.log('✅ Mensagem adicionada ao DOM');
             console.log('📊 Total de mensagens no DOM:', document.querySelectorAll('#chatMessages .message').length);
-            console.log('📜 Altura do scroll:', chatMessages.scrollHeight);
             
-            // Forçar scroll para baixo
             chatMessages.scrollTop = chatMessages.scrollHeight;
-            
-            console.log('🎯 Scroll atualizado para:', chatMessages.scrollTop);
+            console.log('📜 Scroll atualizado');
+        }
+        
+        // Função para escapar HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
 
 
@@ -1990,19 +1905,12 @@
 
         // Fallback: enviar mensagem via HTTP quando Socket.IO falhar
         async function sendMessageHttp(text, messageId = null) {
-            console.log('📡 ========================================');
-            console.log('📡 ENVIANDO MENSAGEM VIA HTTP');
-            console.log('📊 Parâmetros:');
-            console.log('  - text:', text);
-            console.log('  - messageId:', messageId);
-            console.log('  - selectedImage:', selectedImage);
-            console.log('  - selectedFile:', selectedFile);
-            console.log('📡 ========================================');
+            console.log('📡 Enviando via HTTP:', { text, messageId });
+            console.log('📡 RNC ID:', rncId, 'Current User:', currentUserId, currentUserName);
             
             try {
                 let body, headers;
                 
-                // Se houver imagem ou arquivo, usar FormData
                 if (selectedImage || selectedFile) {
                     const formData = new FormData();
                     formData.append('message', text || '');
@@ -2010,11 +1918,9 @@
                     if (selectedImage) {
                         formData.append('image', selectedImage);
                         formData.append('message_type', 'image');
-                        console.log('📸 Enviando imagem:', selectedImage.name);
                     } else if (selectedFile) {
                         formData.append('file', selectedFile);
                         formData.append('message_type', 'file');
-                        console.log('📎 Enviando arquivo:', selectedFile.name);
                     }
                     
                     if (messageId) {
@@ -2022,92 +1928,60 @@
                     }
                     
                     body = formData;
-                    // Não definir Content-Type, deixar o navegador definir com boundary
                     headers = {};
                 } else {
-                    // Mensagem de texto normal
                     body = JSON.stringify({ 
                         message: text,
                         message_id: messageId 
                     });
-                    headers = csrfHeader;
+                    headers = { 'Content-Type': 'application/json' };
                 }
                 
-                console.log('🌐 Fazendo requisição HTTP para:', `/api/chat/${rncId}/messages`);
+                console.log('📤 Fazendo POST para:', `/api/chat/${rncId}/messages`);
+                console.log('📤 Body:', body instanceof FormData ? 'FormData' : body);
+                
                 const res = await fetch(`/api/chat/${rncId}/messages`, {
                     method: 'POST',
                     headers: headers,
                     body: body
                 });
-                console.log('📥 Resposta HTTP recebida:', res.status, res.statusText);
+                
+                console.log('🔍 Status resposta:', res.status, res.statusText);
+                
                 const data = await res.json();
-                console.log('📦 Dados JSON:', data);
+                console.log('📦 Resposta HTTP completa:', JSON.stringify(data, null, 2));
                 
                 if (res.ok && data.success) {
-                    console.log('✅ Mensagem enviada com sucesso! Processando...');
-                    console.log('📦 Dados completos da resposta:', JSON.stringify(data));
+                    let messageData = data.message || data.message_data;
                     
-                    // ✅ CORREÇÃO CRÍTICA: SEMPRE adicionar mensagem própria
-                    // Socket.IO não envia de volta para o remetente (include_self=False)
-                    // Portanto, devemos adicionar nossa própria mensagem via HTTP
+                    console.log('🎯 messageData extraído:', messageData);
                     
-                    // Verificar se data.message existe e tem ID
-                    const messageData = data.message;
-                    
-                    if (messageData && typeof messageData === 'object' && messageData.id) {
-                        console.log('✅ Mensagem recebida do servidor:');
-                        console.log('  - ID:', messageData.id);
-                        console.log('  - user_id:', messageData.user_id);
-                        console.log('  - Tipo:', messageData.message_type);
-                        console.log('  - file_path:', messageData.file_path);
-                        console.log('  - message:', messageData.message);
+                    if (messageData && messageData.id) {
+                        console.log('✅ Mensagem salva com ID:', messageData.id);
                         
-                        // Verificar se a mensagem já existe na tela
-                        const existingMsg = document.querySelector(`[data-message-id="${messageData.id}"]`);
+                        // Marcar como processado
+                        processedMessageIds.add(messageData.id);
+                        console.log('🔖 ID adicionado ao Set. Set atual:', Array.from(processedMessageIds));
                         
-                        if (!existingMsg) {
-                            console.log('➕ Adicionando mensagem própria à interface...');
-                            addMessage(messageData);
-                            console.log('✅ Mensagem adicionada com sucesso!');
-                        } else {
-                            console.log('⚠️ Mensagem já existe na tela, pulando...');
-                        }
-                    } else if (data.message_data && data.message_data.id) {
-                        // Fallback para formato alternativo
-                        console.log('✅ Usando data.message_data...');
-                        const existingMsg = document.querySelector(`[data-message-id="${data.message_data.id}"]`);
-                        if (!existingMsg) {
-                            addMessage(data.message_data);
-                        }
+                        // Adicionar imediatamente
+                        console.log('➡️ Chamando addMessage com:', messageData);
+                        addMessage(messageData);
+                        console.log('✅ addMessage executado');
                     } else {
-                        console.error('❌ Resposta sem dados de mensagem válidos!');
-                        console.error('   data.message:', data.message);
-                        console.error('   data.message_data:', data.message_data);
-                        console.warn('⚠️ Forçando refresh em 300ms...');
-                        setTimeout(() => checkForNewMessages(), 300);
+                        console.warn('⚠️ Sem dados de mensagem na resposta, forçando refresh');
+                        setTimeout(() => checkForNewMessages(), 200);
                     }
                     
-                    showSuccessToast('✅ Mensagem enviada com sucesso!');
-                    SoundSystem.success(); // 🔊 Som de sucesso
-                    
-                    // Campo já foi limpo no início do envio
-                    console.log('✅ Mensagem enviada com sucesso!');
-                    
-                    // Forçar verificação de novas mensagens após 500ms
-                    setTimeout(() => {
-                        console.log('🔄 Forçando verificação de mensagens...');
-                        checkForNewMessages();
-                    }, 500);
+                    showSuccessToast('✅ Mensagem enviada!');
+                    SoundSystem.success();
                 } else {
-                    console.error('❌ Erro ao enviar mensagem:', data.message);
-                    showErrorToast(data.message || '❌ Erro ao enviar mensagem');
+                    console.error('❌ Erro HTTP - success=false:', data.message);
+                    showErrorToast(data.message || '❌ Erro ao enviar');
                 }
             } catch (err) {
-                console.error('Erro de rede ao enviar mensagem:', err);
-                showErrorToast('❌ Erro de rede ao enviar mensagem');
-            } finally {
-                sendBtn.disabled = false;
-                sendBtn.innerHTML = '📤 Enviar';
+                console.error('❌ Erro de rede HTTP:', err);
+                console.error('❌ Stack:', err.stack);
+                showErrorToast('❌ Erro de rede');
             }
         }
         
@@ -2346,34 +2220,33 @@
         // Variável para armazenar o último ID de mensagem carregada
         let lastLoadedMessageId = 0;
         
-        // Variável para controlar envio rápido
-        let lastSentMessage = '';
-        let lastSentTime = 0;
+        // Throttle para checkForNewMessages
+        let isCheckingMessages = false;
         
-        // Função para carregar novas mensagens (polling)
+        // Função para carregar novas mensagens (polling com throttle)
         async function checkForNewMessages() {
+            if (isCheckingMessages) return;
+            
+            isCheckingMessages = true;
+            
             try {
                 const response = await fetch(`/api/chat/${rncId}/messages`);
                 const data = await response.json();
                 
                 if (data.success && data.messages && data.messages.length > 0) {
-                    // Processar apenas mensagens novas
+                    console.log(`📥 Recebidas ${data.messages.length} mensagens do servidor`);
+                    
                     let hasNewMessages = false;
                     data.messages.forEach(msg => {
                         if (msg.id > lastLoadedMessageId) {
-                            // Verificar se a mensagem já existe na tela
-                            const existingMsg = document.querySelector(`[data-message-id="${msg.id}"]`);
-                            if (!existingMsg) {
-                                console.log('🆕 Nova mensagem detectada:', msg.id, 'de user_id:', msg.user_id, 'conteúdo:', msg.message);
+                            if (!processedMessageIds.has(msg.id)) {
+                                console.log('🆕 Nova mensagem detectada:', msg.id);
                                 addMessage(msg);
                                 hasNewMessages = true;
                                 
-                                // Tocar som se não for mensagem própria
                                 if (msg.user_id != currentUserId) {
-                                    playNotificationSound();
+                                    SoundSystem.incoming();
                                 }
-                            } else {
-                                console.log('⚠️ Mensagem já existe na tela, ignorando:', msg.id);
                             }
                             lastLoadedMessageId = msg.id;
                         }
@@ -2381,27 +2254,31 @@
                     
                     if (hasNewMessages) {
                         scrollToBottom();
-                        console.log('📜 Scroll para baixo executado');
                     }
+                } else {
+                    console.log('📭 Nenhuma mensagem nova');
                 }
             } catch (error) {
-                console.error('Erro ao verificar novas mensagens:', error);
+                console.error('❌ Erro ao verificar mensagens:', error);
+            } finally {
+                isCheckingMessages = false;
             }
         }
         
         // Função para atualizar o último ID quando uma mensagem é adicionada
         function updateLastMessageId(messageId) {
-            if (messageId > lastLoadedMessageId) {
-                lastLoadedMessageId = messageId;
-                console.log('🔄 Último ID atualizado para:', lastLoadedMessageId);
+            const numId = typeof messageId === 'string' ? parseInt(messageId) : messageId;
+            if (!isNaN(numId) && numId > lastLoadedMessageId) {
+                lastLoadedMessageId = numId;
             }
         }
         
         // Função para rolar para o final do chat
         function scrollToBottom() {
             if (chatMessages) {
-                chatMessages.scrollTop = chatMessages.scrollHeight;
-                console.log('📜 Scroll para baixo:', chatMessages.scrollHeight);
+                requestAnimationFrame(() => {
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                });
             }
         }
         
@@ -2500,49 +2377,38 @@
         }
 
         document.addEventListener('DOMContentLoaded', function() {
-            // Inicializar DOM primeiro
             initializeDOM();
-            
-            // Inicializar chat
             initializeChat();
             
-            // Tocar som de conquista ao carregar
+            checkForNewMessages();
+            
             setTimeout(() => {
                 SoundSystem.achievement();
-                console.log('🎉 Chat carregado com sucesso!');
             }, 500);
             
-            // Marcar mensagens como visualizadas quando entrar no chat
             markMessagesAsViewed();
             
-            // Definir último ID de mensagem carregada
             const messages = document.querySelectorAll('[data-message-id]');
             messages.forEach(msg => {
                 const msgId = parseInt(msg.getAttribute('data-message-id'));
                 if (msgId > lastLoadedMessageId) {
                     lastLoadedMessageId = msgId;
                 }
+                processedMessageIds.add(msgId);
             });
             
-            console.log('🔄 Último ID de mensagem:', lastLoadedMessageId);
-            
-            // AUTO-REFRESH: Verificar novas mensagens a cada 1 segundo
+            // Polling otimizado: 2s
             setInterval(() => {
-                console.log('🔄 Auto-refresh executando...');
                 checkForNewMessages();
-            }, 1000);
-            console.log('✅ Auto-refresh ativado (1 segundo)');
+            }, 2000);
             
-            // Focar no input
             if (messageInput) {
                 messageInput.focus();
-                updateCharCounter(); // Inicializar contador de caracteres
+                updateCharCounter();
             }
             
-            // Solicitar permissão para notificações
             requestNotificationPermission();
             
-            // Auto-scroll para baixo
             if (chatMessages) {
                 chatMessages.scrollTop = chatMessages.scrollHeight;
             }
@@ -2551,8 +2417,6 @@
         // Função para marcar mensagens como visualizadas
         async function markMessagesAsViewed() {
             try {
-                console.log('📖 Marcando mensagens como visualizadas para RNC:', rncId);
-                
                 const response = await fetch('/api/messages/mark_viewed', {
                     method: 'POST',
                     headers: {
@@ -2563,31 +2427,22 @@
                     })
                 });
                 
-                const data = await response.json();
-                if (data.success) {
-                    console.log(`✅ ${data.marked_count || 0} mensagens marcadas como visualizadas`);
-                } else {
-                    console.error('❌ Erro ao marcar mensagens como visualizadas:', data.message);
-                    
-                    // Se for erro de coluna, mostrar toast informativo
-                    if (data.message && data.message.includes('no such column')) {
-                        showErrorToast('🔧 Sistema atualizando estrutura do banco... Tente novamente em alguns segundos.');
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                        console.log(`✅ ${data.marked_count || 0} mensagens marcadas`);
                     }
                 }
             } catch (error) {
-                console.error('❌ Erro ao marcar mensagens como visualizadas:', error);
+                // Ignorar erro silenciosamente - não é crítico
             }
             
-            // Dispensar notificações relacionadas a esta RNC
             await dismissRncNotifications();
         }
         
         // Função para dispensar notificações desta RNC
         async function dismissRncNotifications() {
             try {
-                console.log('🔔 Dispensando notificações da RNC:', rncId);
-                
-                // Buscar notificações não lidas desta RNC
                 const response = await fetch(`/api/notifications/rnc/${rncId}/dismiss`, {
                     method: 'POST',
                     headers: {
@@ -2595,19 +2450,17 @@
                     }
                 });
                 
+                if (!response.ok) {
+                    console.warn('Erro ao dispensar notificações (não crítico)');
+                    return;
+                }
+                
                 const data = await response.json();
-                if (data.success) {
-                    console.log('✅ Notificações dispensadas:', data.dismissed_count || 0);
-                    
-                    // Atualizar contagem via Socket.IO se disponível
-                    if (notificationSocket && notificationSocket.connected) {
-                        notificationSocket.emit('get_notifications', { unread_only: true });
-                    }
-                } else {
-                    console.error('❌ Erro ao dispensar notificações:', data.message);
+                if (data.success && notificationSocket && notificationSocket.connected) {
+                    notificationSocket.emit('get_notifications', { unread_only: true });
                 }
             } catch (error) {
-                console.error('❌ Erro ao dispensar notificações:', error);
+                console.warn('Erro ao dispensar notificações (não crítico)');
             }
         }
         

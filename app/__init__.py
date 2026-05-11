@@ -21,5 +21,10 @@ def create_app():
         app.register_blueprint(chat_bp)
     except Exception:
         pass
+    try:
+        from routes.ro import ro as ro_bp
+        app.register_blueprint(ro_bp)
+    except Exception:
+        pass
 
     return app

@@ -543,12 +543,17 @@
         
         function dismissNotification() {
             if (window.persistentNotificationSystem && window.currentNotificationId) {
-                window.persistentNotificationSystem.dismissTemporarily(window.currentNotificationId);
+                // Marcar como respondida permanentemente (não apenas dismiss temporário)
+                window.persistentNotificationSystem.markAsResponded(window.currentNotificationId, 'Dispensado via botão Lembrar Depois');
             }
         }
         
         function viewRNC() {
             if (window.currentRncId) {
+                // Marcar como respondida antes de abrir
+                if (window.persistentNotificationSystem && window.currentNotificationId) {
+                    window.persistentNotificationSystem.markAsResponded(window.currentNotificationId, 'Visualizado via botão Ver RNC');
+                }
                 // Abrir RNC em nova aba
                 window.open(`/rnc/${window.currentRncId}`, '_blank');
             }

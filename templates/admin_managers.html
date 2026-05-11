@@ -13,7 +13,7 @@
         }
         
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-family: 'Inter', sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             padding: 20px;
@@ -41,12 +41,6 @@
             gap: 16px;
         }
         
-        .logo {
-            width: 56px;
-            height: 56px;
-            object-fit: contain;
-        }
-        
         h1 {
             font-size: 28px;
             font-weight: 700;
@@ -67,16 +61,6 @@
             gap: 8px;
         }
         
-        .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-        
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
-        }
-        
         .btn-secondary {
             background: #e2e8f0;
             color: #4a5568;
@@ -84,16 +68,6 @@
         
         .btn-secondary:hover {
             background: #cbd5e0;
-        }
-        
-        .btn-success {
-            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
-            color: white;
-        }
-        
-        .btn-success:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(72, 187, 120, 0.4);
         }
         
         .info-card {
@@ -130,10 +104,9 @@
         .group-card {
             background: white;
             border-radius: 16px;
-            padding: 0;
+            overflow: hidden;
             box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
             transition: all 0.3s ease;
-            overflow: hidden;
         }
         
         .group-card:hover {
@@ -163,159 +136,411 @@
         }
         
         .manager-section {
-            margin-bottom: 20px;
+            margin-bottom: 24px;
         }
         
-        .manager-section:last-child {
+        .manager-section:last-of-type {
             margin-bottom: 0;
         }
         
         .manager-label {
             font-size: 12px;
-            font-weight: 600;
+            font-weight: 700;
             color: #718096;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            margin-bottom: 8px;
-            display: block;
-        }
-        
-        .select-wrapper {
-            position: relative;
-        }
-        
-        .manager-select {
-            width: 100%;
-            padding: 12px 40px 12px 16px;
-            background: #f7fafc;
-            border: 2px solid #e2e8f0;
-            border-radius: 10px;
-            color: #2d3748;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            appearance: none;
-        }
-        
-        .manager-select:hover {
-            border-color: #cbd5e0;
-            background: #edf2f7;
-        }
-        
-        .manager-select:focus {
-            outline: none;
-            border-color: #667eea;
-            background: white;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-        
-        .select-wrapper::after {
-            content: '▼';
-            position: absolute;
-            right: 16px;
-            top: 50%;
-            transform: translateY(-50%);
-            pointer-events: none;
-            color: #a0aec0;
-            font-size: 10px;
-        }
-        
-        .current-manager {
-            background: linear-gradient(135deg, #f0fff4 0%, #c6f6d5 100%);
-            border: 2px solid #48bb78;
-            border-radius: 12px;
-            padding: 16px;
             margin-bottom: 12px;
-        }
-        
-        .current-manager-label {
-            font-size: 11px;
-            font-weight: 700;
-            color: #2f855a;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 6px;
-        }
-        
-        .current-manager-name {
-            font-size: 16px;
-            font-weight: 700;
-            color: #22543d;
             display: flex;
             align-items: center;
             gap: 8px;
         }
         
-        .current-manager-email {
-            font-size: 13px;
-            color: #276749;
-            margin-top: 4px;
-        }
-        
-        .no-manager {
-            background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
-            border: 2px solid #f59e0b;
+        .managers-display {
+            background: #f7fafc;
+            border: 2px dashed #e2e8f0;
             border-radius: 12px;
             padding: 16px;
-            text-align: center;
-            color: #92400e;
-            font-size: 14px;
-            font-weight: 600;
+            min-height: 80px;
             margin-bottom: 12px;
-        }
-        
-        .save-section {
-            margin-top: 20px;
-            padding-top: 20px;
-            border-top: 1px solid #e2e8f0;
             display: flex;
-            gap: 12px;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: flex-start;
+            align-content: flex-start;
         }
         
-        .save-btn {
-            flex: 1;
+        .managers-display.has-managers {
+            border-style: solid;
+            background: white;
         }
         
-        .clear-btn {
-            background: #e2e8f0;
-            color: #4a5568;
-            padding: 12px 20px;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            font-size: 14px;
+        .manager-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 20px;
+            font-size: 13px;
             font-weight: 600;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+            transition: all 0.2s ease;
+            animation: chipIn 0.3s ease;
+        }
+        
+        @keyframes chipIn {
+            from {
+                opacity: 0;
+                transform: scale(0.8);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+        
+        .manager-chip:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        .manager-chip-remove {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: bold;
             transition: all 0.2s ease;
         }
         
-        .clear-btn:hover {
-            background: #cbd5e0;
+        .manager-chip-remove:hover {
+            background: rgba(255, 255, 255, 0.4);
+            transform: scale(1.1);
         }
         
-        .empty-state {
-            background: white;
-            border-radius: 16px;
-            padding: 60px 20px;
-            text-align: center;
-            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
-        }
-        
-        .empty-icon {
-            font-size: 64px;
-            margin-bottom: 16px;
-            opacity: 0.3;
-        }
-        
-        .empty-state h3 {
-            font-size: 20px;
-            color: #2d3748;
-            margin-bottom: 8px;
-        }
-        
-        .empty-state p {
+        .empty-managers {
+            color: #a0aec0;
             font-size: 14px;
+            font-style: italic;
+            text-align: center;
+            padding: 12px;
+        }
+        
+        .add-manager-btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+        
+        .add-manager-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .add-manager-btn:active {
+            transform: translateY(0);
+        }
+        
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(4px);
+            z-index: 9999;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        .modal-overlay.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 20px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 85vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: slideUp 0.3s ease;
+        }
+        
+        @keyframes slideUp {
+            from {
+                transform: translateY(50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        .modal-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 24px 28px;
+            border-radius: 20px 20px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .modal-header h3 {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 700;
+        }
+        
+        .modal-close {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+        
+        .modal-close:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: rotate(90deg);
+        }
+        
+        .modal-body {
+            padding: 24px 28px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        
+        .modal-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        
+        .modal-tab {
+            padding: 12px 20px;
+            background: none;
+            border: none;
             color: #718096;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s ease;
+            position: relative;
+            bottom: -2px;
+        }
+        
+        .modal-tab:hover {
+            color: #667eea;
+        }
+        
+        .modal-tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+        
+        .tab-badge {
+            background: #e2e8f0;
+            color: #4a5568;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            margin-left: 6px;
+            font-weight: 700;
+        }
+        
+        .modal-tab.active .tab-badge {
+            background: #667eea;
+            color: white;
+        }
+        
+        .modal-search {
+            width: 100%;
+            padding: 14px 20px 14px 44px;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 14px;
+            margin-bottom: 20px;
+            transition: all 0.2s ease;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23a0aec0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'%3E%3C/circle%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'%3E%3C/line%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: 14px center;
+        }
+        
+        .modal-search:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+        }
+        
+        .user-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .user-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 16px;
+            background: #f7fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .user-item:hover {
+            background: #edf2f7;
+            border-color: #cbd5e0;
+            transform: translateX(4px);
+        }
+        
+        .user-item.selected {
+            background: linear-gradient(135deg, #f0fff4 0%, #c6f6d5 100%);
+            border-color: #48bb78;
+        }
+        
+        .user-avatar {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 700;
+            font-size: 17px;
+            flex-shrink: 0;
+        }
+        
+        .user-item.selected .user-avatar {
+            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+        }
+        
+        .user-info {
+            flex: 1;
+        }
+        
+        .user-name {
+            font-weight: 600;
+            color: #2d3748;
+            font-size: 15px;
+            margin-bottom: 3px;
+        }
+        
+        .user-email {
+            font-size: 13px;
+            color: #718096;
+        }
+        
+        .user-check {
+            width: 24px;
+            height: 24px;
+            border: 2px solid #cbd5e0;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            font-size: 14px;
+        }
+        
+        .user-item.selected .user-check {
+            background: #48bb78;
+            border-color: #48bb78;
+            color: white;
+        }
+        
+        .modal-footer {
+            padding: 20px 28px;
+            border-top: 2px solid #e2e8f0;
+            display: flex;
+            gap: 12px;
+            background: #f7fafc;
+            border-radius: 0 0 20px 20px;
+        }
+        
+        .modal-btn {
+            flex: 1;
+            padding: 14px;
+            border: none;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .modal-btn-cancel {
+            background: white;
+            color: #4a5568;
+            border: 2px solid #e2e8f0;
+        }
+        
+        .modal-btn-cancel:hover {
+            background: #e2e8f0;
+        }
+        
+        .modal-btn-confirm {
+            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+            color: white;
+            box-shadow: 0 4px 12px rgba(72, 187, 120, 0.3);
+        }
+        
+        .modal-btn-confirm:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(72, 187, 120, 0.4);
+        }
+        
+        .modal-btn-confirm:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
         }
         
         .notification {
@@ -326,15 +551,15 @@
             border-radius: 12px;
             font-weight: 600;
             font-size: 14px;
-            z-index: 1000;
-            animation: slideIn 0.3s ease;
+            z-index: 10000;
+            animation: slideInRight 0.3s ease;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
             display: flex;
             align-items: center;
             gap: 12px;
         }
         
-        @keyframes slideIn {
+        @keyframes slideInRight {
             from {
                 transform: translateX(400px);
                 opacity: 0;
@@ -357,37 +582,22 @@
         
         .loading {
             text-align: center;
-            padding: 40px;
+            padding: 60px 20px;
         }
         
         .spinner {
-            border: 3px solid #e2e8f0;
-            border-top: 3px solid #667eea;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid white;
             border-radius: 50%;
-            width: 40px;
-            height: 40px;
+            width: 50px;
+            height: 50px;
             animation: spin 0.8s linear infinite;
-            margin: 0 auto 16px;
+            margin: 0 auto 20px;
         }
         
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
-        }
-        
-        @media (max-width: 768px) {
-            .groups-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            h1 {
-                font-size: 20px;
-            }
-            
-            .header {
-                flex-direction: column;
-                gap: 16px;
-            }
         }
     </style>
 </head>
@@ -395,11 +605,7 @@
     <div class="container">
         <div class="header">
             <div class="header-left">
-                <img src="{{ url_for('static', filename='ippel_logo.png') }}" 
-                     alt="IPPEL" 
-                     class="logo"
-                     onerror="this.style.display='none'">
-                <h1> Gerenciar Gerentes e Sub-Gerentes</h1>
+                <h1>🏢 Gerenciar Gerentes e Sub-Gerentes</h1>
             </div>
             <button class="btn btn-secondary" onclick="window.location.href='/dashboard'">
                 ← Dashboard
@@ -407,19 +613,60 @@
         </div>
         
         <div class="info-card">
-            <h3> Como funciona</h3>
+            <h3>💡 Como funciona</h3>
             <p>
-                Defina o <strong>gerente</strong> e <strong>sub-gerente</strong> de cada grupo. 
-                Quando uma RNC é criada com um <strong>Nome Causador</strong>, o sistema atribuirá 
-                automaticamente a RNC para o causador e para os gerentes do grupo. Isso garante que 
-                as pessoas certas sejam notificadas e possam acompanhar as não conformidades.
+                Defina os <strong>gerentes</strong> e <strong>sub-gerentes</strong> de cada grupo. 
+                <strong>Um funcionário pode ser gerente de vários setores</strong> - basta adicioná-lo em cada grupo necessário. 
+                Quando uma RNC é criada, o sistema atribuirá automaticamente para os gerentes dos grupos relacionados.
             </p>
         </div>
         
         <div id="groupsGrid" class="groups-grid">
             <div class="loading">
                 <div class="spinner"></div>
-                <p style="color: white; font-weight: 600;">Carregando grupos...</p>
+                <p style="color: white; font-weight: 600; font-size: 16px;">Carregando grupos...</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal de Seleção -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Selecionar Gerentes</h3>
+                <button class="modal-close" onclick="closeModal()">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="modal-tabs">
+                    <button class="modal-tab active" onclick="switchTab('current')">
+                        <span>Deste Setor</span>
+                        <span class="tab-badge" id="currentTabCount">0</span>
+                    </button>
+                    <button class="modal-tab" onclick="switchTab('all')">
+                        <span>Todos os Usuários</span>
+                        <span class="tab-badge" id="allTabCount">0</span>
+                    </button>
+                </div>
+                
+                <input 
+                    type="text" 
+                    class="modal-search" 
+                    id="modalSearch" 
+                    placeholder="Buscar por nome ou email..."
+                    oninput="filterUsers()"
+                >
+                
+                <div class="user-list" id="userList"></div>
+            </div>
+            
+            <div class="modal-footer">
+                <button class="modal-btn modal-btn-cancel" onclick="closeModal()">
+                    Cancelar
+                </button>
+                <button class="modal-btn modal-btn-confirm" id="confirmBtn" onclick="confirmSelection()">
+                    ✓ Confirmar Seleção
+                </button>
             </div>
         </div>
     </div>
@@ -427,25 +674,13 @@
     <script>
         let groups = [];
         let groupUsers = {};
-        let hasChanges = new Set();
+        let allUsers = [];
+        let currentGroupId = null;
+        let currentType = null; // 'manager' ou 'sub_manager'
+        let selectedUsers = [];
+        let currentTab = 'current'; // 'current' ou 'all'
         
-        // Função para mostrar notificação
-        function showNotification(message, type = 'success') {
-            const notification = document.createElement('div');
-            notification.className = `notification ${type}`;
-            notification.innerHTML = `
-                <span style="font-size: 20px;">${type === 'success' ? '' : ''}</span>
-                <span>${message}</span>
-            `;
-            document.body.appendChild(notification);
-            
-            setTimeout(() => {
-                notification.style.animation = 'slideIn 0.3s ease reverse';
-                setTimeout(() => notification.remove(), 300);
-            }, 3000);
-        }
-        
-        // Carregar grupos com gerentes
+        // Carregar grupos
         async function loadGroups() {
             try {
                 const response = await fetch('/api/admin/groups/with-managers');
@@ -454,12 +689,13 @@
                 if (data.success) {
                     groups = data.groups;
                     await loadAllGroupUsers();
+                    await loadAllSystemUsers();
                     displayGroups();
                 } else {
                     showNotification('Erro ao carregar grupos: ' + data.message, 'error');
                 }
             } catch (error) {
-                console.error('Erro ao carregar grupos:', error);
+                console.error('Erro:', error);
                 showNotification('Erro ao conectar com o servidor', 'error');
             }
         }
@@ -483,99 +719,79 @@
             }
         }
         
+        // Carregar TODOS os usuários do sistema
+        async function loadAllSystemUsers() {
+            try {
+                const response = await fetch('/api/users/all');
+                const data = await response.json();
+                
+                if (data.success) {
+                    allUsers = data.users;
+                } else {
+                    allUsers = [];
+                }
+            } catch (error) {
+                console.error('Erro ao carregar todos os usuários:', error);
+                allUsers = [];
+            }
+        }
+        
         // Exibir grupos
         function displayGroups() {
             const grid = document.getElementById('groupsGrid');
             
             if (groups.length === 0) {
-                grid.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-icon"></div>
-                        <h3>Nenhum grupo encontrado</h3>
-                        <p>Não há grupos cadastrados no sistema</p>
-                    </div>
-                `;
+                grid.innerHTML = '<div class="loading"><p style="color: white;">Nenhum grupo encontrado</p></div>';
                 return;
             }
             
             grid.innerHTML = groups.map(group => {
-                const users = groupUsers[group.id] || [];
+                const managers = group.managers || [];
+                const subManagers = group.sub_managers || [];
                 
                 return `
                     <div class="group-card">
                         <div class="group-card-header">
                             <div class="group-name">${group.name}</div>
-                            <div class="group-stats">${group.user_count} usuário${group.user_count !== 1 ? 's' : ''} no grupo</div>
+                            <div class="group-stats">${group.user_count} usuário${group.user_count !== 1 ? 's' : ''}</div>
                         </div>
                         
                         <div class="group-card-body">
-                            <!-- Gerente Principal -->
+                            <!-- Gerentes Principais -->
                             <div class="manager-section">
-                                <label class="manager-label"> Gerente Principal</label>
+                                <label class="manager-label">👔 GERENTES PRINCIPAIS</label>
                                 
-                                ${group.manager_name ? `
-                                    <div class="current-manager">
-                                        <div class="current-manager-label">Atual:</div>
-                                        <div class="current-manager-name">
-                                            ${group.manager_name}
+                                <div class="managers-display ${managers.length > 0 ? 'has-managers' : ''}" id="managers-${group.id}">
+                                    ${managers.length > 0 ? managers.map(m => `
+                                        <div class="manager-chip">
+                                            <span>${m.name}</span>
+                                            <button class="manager-chip-remove" onclick="removeManager(${group.id}, ${m.id}, 'manager')">×</button>
                                         </div>
-                                        <div class="current-manager-email">${group.manager_email || ''}</div>
-                                    </div>
-                                ` : `
-                                    <div class="no-manager">
-                                        Nenhum gerente definido
-                                    </div>
-                                `}
-                                
-                                <div class="select-wrapper">
-                                    <select class="manager-select" id="manager-${group.id}" onchange="markChanged(${group.id})">
-                                        <option value="">Selecione o gerente...</option>
-                                        ${users.map(user => `
-                                            <option value="${user.id}" ${user.id === group.manager_user_id ? 'selected' : ''}>
-                                                ${user.name} ${user.email ? '- ' + user.email : ''}
-                                            </option>
-                                        `).join('')}
-                                    </select>
+                                    `).join('') : '<div class="empty-managers">Nenhum gerente definido</div>'}
                                 </div>
-                            </div>
-                            
-                            <!-- Sub-Gerente -->
-                            <div class="manager-section">
-                                <label class="manager-label"> Sub-Gerente</label>
                                 
-                                ${group.sub_manager_name ? `
-                                    <div class="current-manager">
-                                        <div class="current-manager-label">Atual:</div>
-                                        <div class="current-manager-name">
-                                            ${group.sub_manager_name}
-                                        </div>
-                                        <div class="current-manager-email">${group.sub_manager_email || ''}</div>
-                                    </div>
-                                ` : `
-                                    <div class="no-manager">
-                                        Nenhum sub-gerente definido
-                                    </div>
-                                `}
-                                
-                                <div class="select-wrapper">
-                                    <select class="manager-select" id="submanager-${group.id}" onchange="markChanged(${group.id})">
-                                        <option value="">Selecione o sub-gerente...</option>
-                                        ${users.map(user => `
-                                            <option value="${user.id}" ${user.id === group.sub_manager_user_id ? 'selected' : ''}>
-                                                ${user.name} ${user.email ? '- ' + user.email : ''}
-                                            </option>
-                                        `).join('')}
-                                    </select>
-                                </div>
-                            </div>
-                            
-                            <!-- Botões de Ação -->
-                            <div class="save-section" id="actions-${group.id}" style="display:none;">
-                                <button class="btn btn-success save-btn" onclick="saveManagers(${group.id})">
-                                    Salvar Alterações
+                                <button class="add-manager-btn" onclick="openModal(${group.id}, 'manager')">
+                                    <span style="font-size: 18px;">+</span>
+                                    Adicionar Gerentes
                                 </button>
-                                <button class="clear-btn" onclick="clearChanges(${group.id})">
-                                   
+                            </div>
+                            
+                            <!-- Sub-Gerentes -->
+                            <div class="manager-section">
+                                <label class="manager-label">👤 SUB-GERENTES</label>
+                                
+                                <div class="managers-display ${subManagers.length > 0 ? 'has-managers' : ''}" id="submanagers-${group.id}">
+                                    ${subManagers.length > 0 ? subManagers.map(m => `
+                                        <div class="manager-chip">
+                                            <span>${m.name}</span>
+                                            <button class="manager-chip-remove" onclick="removeManager(${group.id}, ${m.id}, 'sub_manager')">×</button>
+                                        </div>
+                                    `).join('') : '<div class="empty-managers">Nenhum sub-gerente definido</div>'}
+                                </div>
+                                
+                                <button class="add-manager-btn" onclick="openModal(${group.id}, 'sub_manager')">
+                                    <span style="font-size: 18px;">+</span>
+                                    Adicionar Sub-Gerentes
                                 </button>
                             </div>
                         </div>
@@ -584,30 +800,192 @@
             }).join('');
         }
         
-        // Marcar grupo como alterado
-        function markChanged(groupId) {
-            hasChanges.add(groupId);
-            document.getElementById(`actions-${groupId}`).style.display = 'flex';
+        // Abrir modal
+        function openModal(groupId, type) {
+            currentGroupId = groupId;
+            currentType = type;
+            currentTab = 'current';
+            
+            const group = groups.find(g => g.id === groupId);
+            
+            // Usuários já selecionados
+            const existingManagers = type === 'manager' ? (group.managers || []) : (group.sub_managers || []);
+            selectedUsers = existingManagers.map(m => m.id);
+            
+            // Título do modal
+            document.getElementById('modalTitle').textContent = 
+                type === 'manager' ? `Selecionar Gerentes - ${group.name}` : `Selecionar Sub-Gerentes - ${group.name}`;
+            
+            // Ativar aba "Deste Setor"
+            document.querySelectorAll('.modal-tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.modal-tab')[0].classList.add('active');
+            
+            // Atualizar contadores
+            updateTabCounts();
+            
+            // Renderizar lista inicial (usuários do setor)
+            renderUserList();
+            
+            document.getElementById('modalSearch').value = '';
+            document.getElementById('modalOverlay').classList.add('show');
         }
         
-        // Limpar alterações
-        function clearChanges(groupId) {
-            const group = groups.find(g => g.id === groupId);
-            if (group) {
-                document.getElementById(`manager-${groupId}`).value = group.manager_user_id || '';
-                document.getElementById(`submanager-${groupId}`).value = group.sub_manager_user_id || '';
-                hasChanges.delete(groupId);
-                document.getElementById(`actions-${groupId}`).style.display = 'none';
+        // Trocar aba
+        function switchTab(tab) {
+            currentTab = tab;
+            
+            // Atualizar visual das abas
+            document.querySelectorAll('.modal-tab').forEach((tabEl, index) => {
+                if ((tab === 'current' && index === 0) || (tab === 'all' && index === 1)) {
+                    tabEl.classList.add('active');
+                } else {
+                    tabEl.classList.remove('active');
+                }
+            });
+            
+            // Renderizar lista
+            renderUserList();
+            
+            // Limpar busca
+            document.getElementById('modalSearch').value = '';
+        }
+        
+        // Atualizar contadores das abas
+        function updateTabCounts() {
+            const currentUsers = groupUsers[currentGroupId] || [];
+            document.getElementById('currentTabCount').textContent = currentUsers.length;
+            document.getElementById('allTabCount').textContent = allUsers.length;
+        }
+        
+        // Renderizar lista de usuários
+        function renderUserList() {
+            const users = currentTab === 'current' 
+                ? (groupUsers[currentGroupId] || [])
+                : allUsers;
+            
+            const userList = document.getElementById('userList');
+            
+            if (users.length === 0) {
+                userList.innerHTML = '<div style="text-align: center; color: #a0aec0; padding: 40px;">Nenhum usuário encontrado</div>';
+                return;
+            }
+            
+            userList.innerHTML = users.map(user => `
+                <div class="user-item ${selectedUsers.includes(user.id) ? 'selected' : ''}" 
+                     onclick="toggleUser(${user.id})"
+                     data-name="${user.name.toLowerCase()}"
+                     data-email="${(user.email || '').toLowerCase()}"
+                     data-group="${user.group_name || ''}">
+                    <div class="user-avatar">${user.name.charAt(0).toUpperCase()}</div>
+                    <div class="user-info">
+                        <div class="user-name">${user.name}</div>
+                        <div class="user-email">${user.email || 'Sem email'}${user.group_name ? ` • ${user.group_name}` : ''}</div>
+                    </div>
+                    <div class="user-check">${selectedUsers.includes(user.id) ? '✓' : ''}</div>
+                </div>
+            `).join('');
+        }
+        
+        // Fechar modal
+        function closeModal() {
+            document.getElementById('modalOverlay').classList.remove('show');
+            currentGroupId = null;
+            currentType = null;
+            selectedUsers = [];
+        }
+        
+        // Toggle seleção de usuário
+        function toggleUser(userId) {
+            const index = selectedUsers.indexOf(userId);
+            if (index > -1) {
+                selectedUsers.splice(index, 1);
+            } else {
+                selectedUsers.push(userId);
+            }
+            
+            // Atualizar visual
+            const items = document.querySelectorAll('.user-item');
+            items.forEach(item => {
+                const checkbox = item.querySelector('.user-check');
+                if (item.onclick.toString().includes(userId)) {
+                    if (selectedUsers.includes(userId)) {
+                        item.classList.add('selected');
+                        checkbox.textContent = '✓';
+                    } else {
+                        item.classList.remove('selected');
+                        checkbox.textContent = '';
+                    }
+                }
+            });
+        }
+        
+        // Filtrar usuários
+        function filterUsers() {
+            const search = document.getElementById('modalSearch').value.toLowerCase();
+            const items = document.querySelectorAll('.user-item');
+            
+            items.forEach(item => {
+                const name = item.dataset.name;
+                const email = item.dataset.email;
+                
+                if (name.includes(search) || email.includes(search)) {
+                    item.style.display = 'flex';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        }
+        
+        // Confirmar seleção
+        async function confirmSelection() {
+            if (selectedUsers.length === 0) {
+                showNotification('Selecione pelo menos um usuário', 'error');
+                return;
+            }
+            
+            const group = groups.find(g => g.id === currentGroupId);
+            const managerIds = currentType === 'manager' ? selectedUsers : (group.managers || []).map(m => m.id);
+            const subManagerIds = currentType === 'sub_manager' ? selectedUsers : (group.sub_managers || []).map(m => m.id);
+            
+            try {
+                const response = await fetch(`/api/admin/groups/${currentGroupId}/managers`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        manager_user_ids: managerIds,
+                        sub_manager_user_ids: subManagerIds
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification(`✓ ${selectedUsers.length} ${currentType === 'manager' ? 'gerentes' : 'sub-gerentes'} atualizados!`, 'success');
+                    closeModal();
+                    await loadGroups();
+                } else {
+                    showNotification('Erro: ' + data.message, 'error');
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                showNotification('Erro ao conectar com o servidor', 'error');
             }
         }
         
-        // Salvar gerentes
-        async function saveManagers(groupId) {
-            const managerSelect = document.getElementById(`manager-${groupId}`);
-            const subManagerSelect = document.getElementById(`submanager-${groupId}`);
+        // Remover gerente
+        async function removeManager(groupId, userId, type) {
+            const group = groups.find(g => g.id === groupId);
             
-            const managerId = managerSelect.value || null;
-            const subManagerId = subManagerSelect.value || null;
+            let managerIds = (group.managers || []).map(m => m.id);
+            let subManagerIds = (group.sub_managers || []).map(m => m.id);
+            
+            if (type === 'manager') {
+                managerIds = managerIds.filter(id => id !== userId);
+            } else {
+                subManagerIds = subManagerIds.filter(id => id !== userId);
+            }
             
             try {
                 const response = await fetch(`/api/admin/groups/${groupId}/managers`, {
@@ -616,32 +994,43 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        manager_user_id: managerId,
-                        sub_manager_user_id: subManagerId
+                        manager_user_ids: managerIds,
+                        sub_manager_user_ids: subManagerIds
                     })
                 });
                 
                 const data = await response.json();
                 
                 if (data.success) {
-                    showNotification('Gerentes atualizados com sucesso!', 'success');
-                    hasChanges.delete(groupId);
-                    document.getElementById(`actions-${groupId}`).style.display = 'none';
-                    // Recarregar dados
+                    showNotification('✓ Gerente removido com sucesso!', 'success');
                     await loadGroups();
                 } else {
                     showNotification('Erro: ' + data.message, 'error');
                 }
             } catch (error) {
-                console.error('Erro ao salvar gerentes:', error);
+                console.error('Erro:', error);
                 showNotification('Erro ao conectar com o servidor', 'error');
             }
         }
         
-        // Carregar ao iniciar
-        document.addEventListener('DOMContentLoaded', function() {
-            loadGroups();
-        });
+        // Notificação
+        function showNotification(message, type = 'success') {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.innerHTML = `
+                <span style="font-size: 20px;">${type === 'success' ? '✓' : '✕'}</span>
+                <span>${message}</span>
+            `;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.animation = 'slideInRight 0.3s ease reverse';
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
+        }
+        
+        // Inicializar
+        document.addEventListener('DOMContentLoaded', loadGroups);
     </script>
 </body>
 </html>

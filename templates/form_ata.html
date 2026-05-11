@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nova Ata de Reunião - Sistema IPPEL</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #8b1538 0%, #c71e1e 100%);
+            padding: 30px;
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .header-logos {
+            display: flex;
+            gap: 12px;
+        }
+
+        .header-logos img {
+            width: 60px;
+            height: 60px;
+            object-fit: contain;
+            background: white;
+            padding: 8px;
+            border-radius: 12px;
+        }
+
+        .header-content h1 {
+            font-size: 1.8rem;
+            margin-bottom: 5px;
+        }
+
+        .header-content p {
+            opacity: 0.9;
+            font-size: 0.95rem;
+        }
+
+        .form-content {
+            padding: 40px;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+            font-size: 0.95rem;
+        }
+
+        .form-group label span {
+            color: #c71e1e;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 0.95rem;
+            transition: all 0.3s;
+            font-family: inherit;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #8b1538;
+            box-shadow: 0 0 0 3px rgba(139, 21, 56, 0.1);
+        }
+
+        textarea.form-control {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 15px;
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 2px solid #f0f0f0;
+        }
+
+        .btn {
+            padding: 14px 30px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            flex: 1;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #8b1538 0%, #c71e1e 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(139, 21, 56, 0.3);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .alert {
+            padding: 15px 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        @media (max-width: 768px) {
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+
+            .form-content {
+                padding: 25px;
+            }
+
+            .btn-group {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-logos">
+                <img src="{{ url_for('static', filename='LOGOSQI.jpg') }}" alt="SQI Logo">
+                <img src="{{ url_for('static', filename='IPPELLOGO.jpg') }}" alt="IPPEL Logo">
+            </div>
+            <div class="header-content">
+                <h1>📋 Nova Ata de Reunião</h1>
+                <p>IPPEL Atas de Reunião</p>
+            </div>
+        </div>
+
+        <div class="form-content">
+            <div id="alertBox" class="alert"></div>
+
+            <form id="ataForm" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="data_reuniao">Data da Reunião <span>*</span></label>
+                    <input type="date" id="data_reuniao" name="data_reuniao" class="form-control" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="pdf_file">Arquivo PDF da Ata <span>*</span></label>
+                    <input type="file" id="pdf_file" name="pdf_file" class="form-control" accept=".pdf" required style="padding: 10px;">
+                    <small style="color: #666; display: block; margin-top: 8px;">
+                        📄 Selecione o PDF da ata de reunião (máximo 10MB)
+                    </small>
+                </div>
+
+                <div id="preview" style="display: none; padding: 15px; background: #f8f9fa; border-radius: 8px; margin-top: 15px;">
+                    <strong>Arquivo selecionado:</strong>
+                    <p id="fileName" style="margin: 5px 0 0 0; color: #28a745;"></p>
+                </div>
+
+                <div class="btn-group">
+                    <button type="button" class="btn btn-secondary" onclick="window.location.href='/dashboard'">
+                        Cancelar
+                    </button>
+                    <button type="submit" class="btn btn-primary" id="btnSubmit">
+                        Enviar Ata
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('ataForm');
+        const btnSubmit = document.getElementById('btnSubmit');
+        const alertBox = document.getElementById('alertBox');
+        const pdfInput = document.getElementById('pdf_file');
+        const preview = document.getElementById('preview');
+        const fileName = document.getElementById('fileName');
+
+        document.getElementById('data_reuniao').valueAsDate = new Date();
+
+        pdfInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                if (file.size > 10 * 1024 * 1024) {
+                    showAlert('Arquivo muito grande. Máximo: 10MB', 'error');
+                    pdfInput.value = '';
+                    preview.style.display = 'none';
+                    return;
+                }
+                fileName.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+                preview.style.display = 'block';
+            } else {
+                preview.style.display = 'none';
+            }
+        });
+
+        function showAlert(message, type) {
+            alertBox.textContent = message;
+            alertBox.className = `alert alert-${type}`;
+            alertBox.style.display = 'block';
+            setTimeout(() => alertBox.style.display = 'none', 5000);
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const file = pdfInput.files[0];
+            if (!file) {
+                showAlert('Selecione um arquivo PDF', 'error');
+                return;
+            }
+
+            btnSubmit.disabled = true;
+            btnSubmit.textContent = 'Enviando...';
+
+            const formData = new FormData();
+            formData.append('data_reuniao', document.getElementById('data_reuniao').value);
+            formData.append('pdf_file', file);
+
+            try {
+                const response = await fetch('/api/ata/create', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert('Ata enviada com sucesso!', 'success');
+                    setTimeout(() => window.location.href = '/dashboard', 1500);
+                } else {
+                    showAlert(data.message || 'Erro ao enviar ata', 'error');
+                    btnSubmit.disabled = false;
+                    btnSubmit.textContent = 'Enviar Ata';
+                }
+            } catch (error) {
+                console.error('Erro:', error);
+                showAlert('Erro ao enviar ata. Tente novamente.', 'error');
+                btnSubmit.disabled = false;
+                btnSubmit.textContent = 'Enviar Ata';
+            }
+        });
+    </script>
+</body>
+</html>

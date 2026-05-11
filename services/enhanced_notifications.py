@@ -60,7 +60,10 @@ class EnhancedNotificationService:
     def ensure_tables(self):
         """Garante que as tabelas de notificação existam"""
         try:
-            conn = sqlite3.connect(self.db_path)
+            # Conectar com timeout de 30 segundos e WAL mode para evitar locks
+            conn = sqlite3.connect(self.db_path, timeout=30.0)
+            conn.execute('PRAGMA journal_mode=WAL')
+            conn.execute('PRAGMA busy_timeout=30000')
             cursor = conn.cursor()
             
             # Tabela principal de notificações
@@ -148,11 +151,42 @@ class EnhancedNotificationService:
                 )
             """)
             
+            # Migração: adicionar colunas faltantes se a tabela já existe
+            try:
+                cursor.execute("PRAGMA table_info(notifications)")
+                cols = {row[1] for row in cursor.fetchall()}
+                
+                if 'group_id' not in cols:
+                    cursor.execute("ALTER TABLE notifications ADD COLUMN group_id TEXT")
+                    logger.info("Coluna group_id adicionada à tabela notifications")
+                
+                if 'dismissed_at' not in cols:
+                    cursor.execute("ALTER TABLE notifications ADD COLUMN dismissed_at TIMESTAMP")
+                    logger.info("Coluna dismissed_at adicionada à tabela notifications")
+                
+                if 'icon' not in cols:
+                    cursor.execute("ALTER TABLE notifications ADD COLUMN icon TEXT")
+                    logger.info("Coluna icon adicionada à tabela notifications")
+                
+                if 'action_url' not in cols:
+                    cursor.execute("ALTER TABLE notifications ADD COLUMN action_url TEXT")
+                    logger.info("Coluna action_url adicionada à tabela notifications")
+                
+                if 'channels' not in cols:
+                    cursor.execute("ALTER TABLE notifications ADD COLUMN channels TEXT DEFAULT 'in_app'")
+                    logger.info("Coluna channels adicionada à tabela notifications")
+                
+            except Exception as migration_err:
+                logger.warning(f"Aviso durante migração de colunas: {migration_err}")
+            
             # Índices para performance
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(to_user_id, is_read)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(type)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_notifications_group ON notifications(group_id)")
+            try:
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_notifications_group ON notifications(group_id)")
+            except:
+                pass  # Índice pode falhar se coluna não existe ainda
             
             conn.commit()
             conn.close()

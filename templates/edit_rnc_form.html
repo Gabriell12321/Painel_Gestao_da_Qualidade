@@ -307,7 +307,7 @@
 
                         var formData = {};
                         // Campos principais simples (se existirem)
-                        ['title','description','equipment','client','rnc_number','mp','revision','position','cv','conjunto','modelo','description_drawing','quantity','material','purchase_order','created_at','instruction_retrabalho','cause_rnc','action_rnc'].forEach(function(k){
+                        ['title','description','equipment','client','rnc_number','mp','revision','position','cv','conjunto','modelo','description_drawing','quantity','material','purchase_order','instruction_retrabalho','cause_rnc','action_rnc'].forEach(function(k){
                             var v = valById(k);
                             if (v !== '') formData[k] = v;
                         });
@@ -348,6 +348,10 @@
                         // 5. Assinatura Causador
                         var assinaturaLider = valById('assinatura_lider');
                         if (assinaturaLider) formData.signature_inspection2_name = assinaturaLider;
+
+                        // Data de emissão (created_at) - SEMPRE enviar
+                        var dataEmissao = valById('data_emissao');
+                        if (dataEmissao) formData.created_at = dataEmissao;
 
                         // Preço e observação
                         var priceRaw = valById('price');
@@ -395,7 +399,12 @@
                             if (data && data.success) {
                                 try { localStorage.removeItem('dashboardCacheV1'); } catch(e){}
                                 if (typeof mostrarNotificacao === 'function') mostrarNotificacao(' Alterações salvas com sucesso!');
-                                setTimeout(() => { window.location.href = '/rnc/{{ rnc.id }}?_t=' + Date.now(); }, 800);
+                                setTimeout(() => { 
+                                    const ts = Date.now();
+                                    const targetUrl = '/rnc/{{ rnc.id }}?_t=' + ts;
+                                    console.log('🔄 [FALLBACK] Redirecionando para:', targetUrl);
+                                    window.location.replace(targetUrl);
+                                }, 800);
                             } else {
                                 if (typeof mostrarNotificacao === 'function') mostrarNotificacao(' Erro ao salvar alterações' + (data && data.message ? ': ' + data.message : ''), 'error');
                             }
@@ -430,9 +439,11 @@
             }, true);
         </script>
         <script>
-            // Flag para saber se é modo Responder
+            // Flag para saber se é modo Responder, se é admin e se é gerente
             const IS_REPLY = {{ 'true' if is_reply else 'false' }};
-            console.log(' Edit RNC form script loaded');
+            const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
+            const IS_MANAGER = {{ 'true' if is_manager else 'false' }};
+            console.log(' Edit RNC form script loaded - IS_REPLY:', IS_REPLY, 'IS_ADMIN:', IS_ADMIN, 'IS_MANAGER:', IS_MANAGER);
         </script>
         <!-- Banner de modo de edição (apenas para edição, não para resposta) -->
         {% if not is_reply %}
@@ -445,8 +456,8 @@
         <div class="header">
             <div class="logos" style="display:flex; gap:12px; align-items:center;">
                 <img src="{{ url_for('static', filename='LOGOSQI.jpg') }}" alt="SQI Logo" style="width: 120px; height: 120px; border-radius: 15px; object-fit: contain; background: transparent; padding: 0; border: none;">
-                <img src="/IPPELLOGO.jpg" alt="IPPEL Logo" class="apply-logo" style="width: 120px; height: 120px; border-radius: 15px; object-fit: contain; background: transparent; padding: 0; border: none;"
-                     data-logo-primary="/IPPELLOGO.jpg"
+                <img src="{{ url_for('static', filename='IPPELLOGO.jpg') }}" alt="IPPEL Logo" class="apply-logo" style="width: 120px; height: 120px; border-radius: 15px; object-fit: contain; background: transparent; padding: 0; border: none;"
+                     data-logo-primary="{{ url_for('static', filename='IPPELLOGO.jpg') }}"
                      data-logo-fallback1="/IPPELLOGO.jpg"
                      data-logo-fallback2="{{ url_for('static', filename='LOGOSQI.jpg') }}"
                      onerror="if(this.dataset.try1!=='1'){this.dataset.try1='1'; this.src=this.dataset.logoFallback1;} else if(this.dataset.try2!=='1'){this.dataset.try2='1'; this.src=this.dataset.logoFallback2;} else {this.style.display='none';}">
@@ -472,7 +483,8 @@
         <div class="rnc-number" style="text-align: center; margin-bottom: 20px;">
             <label style="font-weight: 600; color: #495057; margin-right: 10px;">RNC Nº.:</label>
             <input type="text" id="rnc_number" name="rnc_number" value="{{ rnc.rnc_number }}" 
-                   style="border: 1px solid #000; border-radius: 5px; padding: 8px; width: 200px; font-weight: 600;">
+                   style="border: 1px solid #000; border-radius: 5px; padding: 8px; width: 200px; font-weight: 600;{% if is_reply and not is_admin %} background:#e9ecef; cursor:not-allowed;{% endif %}"
+                   {% if is_reply and not is_admin %}disabled{% endif %}>
         </div>
 
         <!-- ============================================ -->
@@ -482,29 +494,31 @@
 
             <!-- Cabeçalho da Seção -->
             <div style="background: white; color: black; padding: 12px 20px; font-weight: bold; font-size: 15px; text-align: center; letter-spacing: 1px;">
-                 DESENHO
+                 DESENHO {% if is_reply and not is_admin %}<span style="font-size:11px;opacity:0.6">(somente admin)</span>{% endif %}
             </div>
 
             <!-- Conteúdo -->
             <div style="padding: 20px; background: white;">
-                <!-- Linha 1: CLIENTES | NUMERO DE DESENHO | REVISÃO -->
+                <!-- Linha 1: CLIENTES | NUMERO DE DESENHO | REVISÃO | DATA -->
                 <table style="margin-bottom: 0;">
                     <tr>
-                        <td class="field-label" style="width: 33.33%;">CLIENTES</td>
-                        <td class="field-label" style="width: 33.33%;">NUMERO DE DESENHO</td>
-                        <td class="field-label" style="width: 33.33%;">REVISÃO</td>
+                        <td class="field-label" style="width: 25%;">CLIENTES</td>
+                        <td class="field-label" style="width: 25%;">NUMERO DE DESENHO</td>
+                        <td class="field-label" style="width: 25%;">REVISÃO</td>
+                        <td class="field-label" style="width: 25%;">DATA</td>
                     </tr>
                     <tr>
                         <td>
-                            <select id="client" name="client" class="input-field" data-field="client" style="padding: 8px; cursor: pointer;">
+                            <select id="client" name="client" class="input-field" data-field="client" style="padding: 8px; cursor: pointer;{% if is_reply and not is_admin %} background:#e9ecef;{% endif %}" {% if is_reply and not is_admin %}disabled{% endif %}>
                                 <option value="">Selecione o cliente</option>
                                 {% for client in clients %}
                                 <option value="{{ client }}" {% if rnc.client == client %}selected{% endif %}>{{ client }}</option>
                                 {% endfor %}
                             </select>
                         </td>
-                        <td><input type="text" name="drawing" class="input-field" placeholder="Número do Desenho" data-field="drawing" value="{{ rnc.drawing or txt_fields.get('Desenho') or '' }}"></td>
-                        <td><input type="text" name="revision" class="input-field" placeholder="Revisão" data-field="revision" value="{{ rnc.revision or txt_fields.get('Revisão') or txt_fields.get('REVISAO') or '' }}"></td>
+                        <td><input type="text" name="drawing" class="input-field" placeholder="Número do Desenho" data-field="drawing" value="{{ rnc.drawing or txt_fields.get('Desenho') or '' }}" {% if is_reply and not is_admin %}disabled style="background:#e9ecef;cursor:not-allowed;"{% endif %}></td>
+                        <td><input type="text" name="revision" class="input-field" placeholder="Revisão" data-field="revision" value="{{ rnc.revision or txt_fields.get('Revisão') or txt_fields.get('REVISAO') or '' }}" {% if is_reply and not is_admin %}disabled style="background:#e9ecef;cursor:not-allowed;"{% endif %}></td>
+                        <td><input type="date" id="data_emissao" name="data_emissao" class="input-field" data-field="created_at" value="" style="cursor: pointer;{% if is_reply and not is_admin %} background:#e9ecef;{% else %} background: white;{% endif %}" {% if is_reply and not is_admin %}disabled{% endif %}></td>
                     </tr>
                 </table>
 
@@ -515,8 +529,8 @@
                         <td class="field-label" style="width: 50%;">EQUIPAMENTO</td>
                     </tr>
                     <tr>
-                        <td><input type="text" name="conjunto" class="input-field" placeholder="Conjunto" data-field="conjunto" value="{{ rnc.conjunto or txt_fields.get('Conjunto') or '' }}"></td>
-                        <td><input type="text" id="equipment" name="equipment" class="input-field" placeholder="Equipamento" data-field="equipment" value="{{ rnc.equipment or '' }}"></td>
+                        <td><input type="text" name="conjunto" class="input-field" placeholder="Conjunto" data-field="conjunto" value="{{ rnc.conjunto or txt_fields.get('Conjunto') or '' }}" {% if is_reply and not is_admin %}disabled style="background:#e9ecef;cursor:not-allowed;"{% endif %}></td>
+                        <td><input type="text" id="equipment" name="equipment" class="input-field" placeholder="Equipamento" data-field="equipment" value="{{ rnc.equipment or '' }}" {% if is_reply and not is_admin %}disabled style="background:#e9ecef;cursor:not-allowed;"{% endif %}></td>
                     </tr>
                 </table>
 
@@ -526,7 +540,17 @@
                         <td class="field-label" style="width: 100%;">DESCRIÇÃO DO DESENHO</td>
                     </tr>
                     <tr>
-                        <td><input type="text" name="description_drawing" class="input-field" placeholder="Descrição do desenho" data-field="description_drawing" value="{{ rnc.description_drawing or txt_fields.get('Descrição do desenho') or '' }}"></td>
+                        <td><input type="text" name="description_drawing" class="input-field" placeholder="Descrição do desenho" data-field="description_drawing" value="{{ rnc.description_drawing or txt_fields.get('Descrição do desenho') or '' }}" {% if is_reply and not is_admin %}disabled style="background:#e9ecef;cursor:not-allowed;"{% endif %}></td>
+                    </tr>
+                </table>
+
+                <!-- Linha 4: DESCRIÇÃO -->
+                <table style="margin-bottom: 0;">
+                    <tr>
+                        <td class="field-label" style="width: 100%;">DESCRIÇÃO</td>
+                    </tr>
+                    <tr>
+                        <td><input type="text" id="title" name="title" class="input-field" placeholder="Título resumido da RNC (ex: REVISÃO NA QUANTIDADE DA POSIÇÃO 19...)" data-field="title" value="{{ rnc.title or '' }}" {% if is_reply and not is_admin %}disabled style="background:#e9ecef;cursor:not-allowed;"{% endif %}></td>
                     </tr>
                 </table>
 
@@ -541,7 +565,7 @@
         <div style="margin: 20px 0; border: 1px solid #2c3e50; border-radius: 8px; overflow: hidden; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);">
             <!-- Cabeçalho da Seção -->
             <div style="background: linear-gradient(135deg, #34495e, #2c3e50); color: white; padding: 10px 15px; font-weight: bold; font-size: 14px; text-align: center; letter-spacing: 1px;">
-                 COMPLEMENTARES
+                 COMPLEMENTARES {% if is_reply and not is_admin %}<span style="font-size:11px;opacity:0.6">(somente admin)</span>{% endif %}
             </div>
 
             <!-- Conteúdo -->
@@ -555,10 +579,10 @@
                         <td class="field-label" style="width: 25%; background: #e9ecef; font-size: 12px; padding: 6px;">QUANTIDADE</td>
                     </tr>
                     <tr>
-                        <td style="padding: 4px;"><input type="text" name="position" class="input-field" placeholder="Posição" data-field="position" style="height: 38px; font-size: 13px;" value="{{ rnc.position or txt_fields.get('POS') or '' }}"></td>
-                        <td style="padding: 4px;"><input type="text" name="modelo" class="input-field" placeholder="Modelo" data-field="modelo" style="height: 38px; font-size: 13px;" value="{{ rnc.modelo or txt_fields.get('Modelo') or '' }}"></td>
-                        <td style="padding: 4px;"><input type="text" name="material" class="input-field" placeholder="Material" data-field="material" style="height: 38px; font-size: 13px;" value="{{ rnc.material or txt_fields.get('Material') or '' }}"></td>
-                        <td style="padding: 4px;"><input type="number" id="quantity" name="quantity" class="input-field" placeholder="Quantidade" data-field="quantity" min="0" step="1" style="height: 38px; font-size: 13px;" value="{{ rnc.quantity or txt_fields.get('Quantidade') or '' }}"></td>
+                        <td style="padding: 4px;"><input type="text" name="position" class="input-field" placeholder="Posição" data-field="position" style="height: 38px; font-size: 13px;{% if is_reply and not is_admin %} background:#e9ecef;cursor:not-allowed;{% endif %}" value="{{ rnc.position or txt_fields.get('POS') or '' }}" {% if is_reply and not is_admin %}disabled{% endif %}></td>
+                        <td style="padding: 4px;"><input type="text" name="modelo" class="input-field" placeholder="Modelo" data-field="modelo" style="height: 38px; font-size: 13px;{% if is_reply and not is_admin %} background:#e9ecef;cursor:not-allowed;{% endif %}" value="{{ rnc.modelo or txt_fields.get('Modelo') or '' }}" {% if is_reply and not is_admin %}disabled{% endif %}></td>
+                        <td style="padding: 4px;"><input type="text" name="material" class="input-field" placeholder="Material" data-field="material" style="height: 38px; font-size: 13px;{% if is_reply and not is_admin %} background:#e9ecef;cursor:not-allowed;{% endif %}" value="{{ rnc.material or txt_fields.get('Material') or '' }}" {% if is_reply and not is_admin %}disabled{% endif %}></td>
+                        <td style="padding: 4px;"><input type="number" id="quantity" name="quantity" class="input-field" placeholder="Quantidade" data-field="quantity" min="0" step="1" style="height: 38px; font-size: 13px;{% if is_reply and not is_admin %} background:#e9ecef;cursor:not-allowed;{% endif %}" value="{{ rnc.quantity or txt_fields.get('Quantidade') or '' }}" {% if is_reply and not is_admin %}disabled{% endif %}></td>
                     </tr>
                 </table>
 
@@ -569,8 +593,8 @@
                         <td class="field-label" style="width: 50%; background: #e9ecef; font-size: 12px; padding: 6px;">MP</td>
                     </tr>
                     <tr>
-                        <td style="padding: 4px;"><input type="text" name="cv" class="input-field" placeholder="CV" data-field="cv" style="height: 38px; font-size: 13px;" value="{{ rnc.cv or txt_fields.get('CV') or '' }}"></td>
-                        <td style="padding: 4px;"><input type="text" name="mp" class="input-field" placeholder="MP" data-field="mp" style="height: 38px; font-size: 13px;" value="{{ rnc.mp or txt_fields.get('MP') or '' }}"></td>
+                        <td style="padding: 4px;"><input type="text" name="cv" class="input-field" placeholder="CV" data-field="cv" style="height: 38px; font-size: 13px;{% if is_reply and not is_admin %} background:#e9ecef;cursor:not-allowed;{% endif %}" value="{{ rnc.cv or txt_fields.get('CV') or '' }}" {% if is_reply and not is_admin %}disabled{% endif %}></td>
+                        <td style="padding: 4px;"><input type="text" name="mp" class="input-field" placeholder="MP" data-field="mp" style="height: 38px; font-size: 13px;{% if is_reply and not is_admin %} background:#e9ecef;cursor:not-allowed;{% endif %}" value="{{ rnc.mp or txt_fields.get('MP') or '' }}" {% if is_reply and not is_admin %}disabled{% endif %}></td>
                     </tr>
                 </table>
 
@@ -585,15 +609,20 @@
                             <input type="text" id="price" name="price" class="input-field" placeholder="R$ 0,00" data-field="price"
                                    inputmode="decimal" autocomplete="off" readonly style="background: #f8f9fa; cursor: pointer; height: 38px; font-size: 13px;"
                                    value="{% if rnc.price %}R$ {{ ('%.2f' % (rnc.price|float)).replace('.', ',') }}{% else %}{% endif %}">
-                            <button type="button" onclick="openValoresSelectionModal()" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); padding: 6px 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600;" onmouseover="this.style.background='#0056b3'" onmouseout="this.style.background='#007bff'">
+                            {% if not is_reply or is_admin %}
+                            <button type="button" onclick="openValoresSelectionModal()" style="position: absolute; right: 86px; top: 50%; transform: translateY(-50%); padding: 6px 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600;" onmouseover="this.style.background='#0056b3'" onmouseout="this.style.background='#007bff'">
                                 Adicionar
                             </button>
+                            <button type="button" onclick="limparValorTotal()" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); padding: 6px 10px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600;" onmouseover="this.style.background='#c82333'" onmouseout="this.style.background='#dc3545'">
+                                Limpar
+                            </button>
+                            {% endif %}
                             <!-- Lista de itens selecionados -->
                             <div id="selectedValoresList" style="margin-top: 8px; max-height: 180px; overflow-y: auto; display: none; border: 1px solid #ddd; border-radius: 4px; padding: 8px; background: white;">
                                 <!-- Itens serão adicionados aqui dinamicamente -->
                             </div>
                         </td>
-                        <td style="padding: 4px;"><input type="text" id="price_note" class="input-field" placeholder="Ex.: custo estimado, nota de orçamento" data-field="price_note" style="height: 38px; font-size: 13px;" value="{{ rnc.price_note or '' }}"></td>
+                        <td style="padding: 4px;"><input type="text" id="price_note" class="input-field" placeholder="Ex.: custo estimado, nota de orçamento" data-field="price_note" style="height: 38px; font-size: 13px;{% if is_reply and not is_admin %} background:#e9ecef;cursor:not-allowed;{% endif %}" value="{{ rnc.price_note or '' }}" {% if is_reply and not is_admin %}disabled{% endif %}></td>
                     </tr>
                 </table>
             </div>
@@ -605,21 +634,21 @@
         <div style="margin: 25px 0; border: 1px solid #000; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);">
             <!-- Cabeçalho da Seção -->
             <div style="background: white; color: black; padding: 12px 20px; font-weight: bold; font-size: 15px; text-align: center; letter-spacing: 1px;">
-                 ASSINATURAS CABEÇALHO
+                 ASSINATURAS CABEÇALHO {% if is_reply and not is_admin %}<span style="font-size:11px;opacity:0.6">(somente admin)</span>{% endif %}
             </div>
 
             <!-- Conteúdo -->
             <div style="padding: 20px; background: white;">
-                <!-- Linha 1: Setor responsável | Assinatura responsável | Data -->
+                <!-- Linha 1: Setor responsável | Assinatura responsável | Nome causador -->
                 <table style="margin-bottom: 0;">
                     <tr>
                         <td class="field-label" style="width: 33.33%;">SETOR RESPONSÁVEL</td>
                         <td class="field-label" style="width: 33.33%;">ASSINATURA RESPONSÁVEL</td>
-                        <td class="field-label" style="width: 33.33%;">DATA</td>
+                        <td class="field-label" style="width: 33.33%;">NOME CAUSADOR</td>
                     </tr>
                     <tr>
                         <td>
-                            <select id="area_responsavel_select" name="area_responsavel" class="input-field" data-field="area_responsavel" onchange="onAreaResponsavelChange()" style="padding: 10px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 14px; width: 100%; background: white; cursor: pointer; transition: all 0.2s;">
+                            <select id="area_responsavel_select" name="area_responsavel" class="input-field" data-field="area_responsavel" onchange="onAreaResponsavelChange()" style="padding: 10px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 14px; width: 100%;{% if is_reply and not is_admin %} background:#e9ecef;{% else %} background: white;{% endif %} cursor: pointer; transition: all 0.2s;" {% if is_reply and not is_admin %}disabled{% endif %}>
                                 {% set current_group_label = (rnc.area_responsavel_name or rnc.area_responsavel) %}
                                 <option value="">Selecione a Área Responsável</option>
                                 {% if current_group_label %}
@@ -628,33 +657,21 @@
                                 {% endif %}
                             </select>
                         </td>
-                        <td><input type="text" id="ass_responsavel" name="ass_responsavel" class="input-field" placeholder="Assinatura Responsável" data-field="signature_inspection_name" value="{{ rnc.ass_responsavel or rnc.gerente_grupo_name or rnc.signature_engineering_name or rnc.signature_inspection_name or '' }}"></td>
-                        <td><input type="text" id="data_emissao" name="data_emissao" class="input-field" data-field="created_at" value="{{ (rnc.created_at or '')[:10] if rnc.created_at else '' }}"></td>
-                    </tr>
-                </table>
-
-                <!-- Linha 2: Inspetor | Nome causador | Assinatura Causador -->
-                <table style="margin-bottom: 0;">
-                    <tr>
-                        <td class="field-label" style="width: 33.33%;">INSPETOR</td>
-                        <td class="field-label" style="width: 33.33%;">NOME CAUSADOR</td>
-                        <td class="field-label" style="width: 33.33%;">ASSINATURA CAUSADOR</td>
-                    </tr>
-                    <tr>
-                        <td><input type="text" name="inspetor" class="input-field" placeholder="Inspetor" data-field="inspetor" value="{{ rnc.inspetor_name or rnc.inspetor or '' }}"></td>
+                        <td><input type="text" id="ass_responsavel" name="ass_responsavel" class="input-field" placeholder="Assinatura Responsável" data-field="signature_inspection_name" value="{{ rnc.ass_responsavel or rnc.gerente_grupo_name or rnc.signature_engineering_name or rnc.signature_inspection_name or '' }}" style="{% if is_reply and not is_admin %}background:#e9ecef;cursor:not-allowed;{% else %}background: white;{% endif %}" {% if is_reply and not is_admin %}disabled{% endif %}></td>
                         <td>
-                            <select id="nome_responsavel" name="nome_responsavel" class="input-field" data-field="responsavel" onchange="onNomeResponsavelChange()" style="padding: 10px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 14px; width: 100%; background: white; cursor: pointer; transition: all 0.2s;">
+                            <select id="nome_responsavel" name="nome_responsavel" class="input-field" data-field="responsavel" onchange="onNomeResponsavelChange()" style="padding: 10px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 14px; width: 100%;{% if is_reply and not is_admin and not is_manager %} background:#e9ecef;{% else %} background: white;{% endif %} cursor: pointer; transition: all 0.2s;" {% if is_reply and not is_admin and not is_manager %}disabled{% endif %}>
                                 <option value="">Selecione o Usuário Causador</option>
                                 {% set current_causador_label = (rnc.causador_name or rnc.responsavel_name or rnc.responsavel) %}
                                 {% if current_causador_label %}
-                                <!-- Exibe imediatamente o causador atual enquanto o JS carrega as opções -->
                                 <option value="{{ current_causador_label }}" selected>{{ current_causador_label }}</option>
                                 {% endif %}
                             </select>
                         </td>
-                        <td><input type="text" name="assinatura_lider" id="assinatura_lider" class="input-field" placeholder="Digite a assinatura manualmente" data-field="signature_inspection2_name" value="{{ rnc.signature_inspection2_name or '' }}"></td>
                     </tr>
                 </table>
+                <!-- Campos ocultos para manter compatibilidade -->
+                <input type="hidden" name="inspetor" data-field="inspetor" value="{{ rnc.inspetor_name or rnc.inspetor or '' }}">
+                <input type="hidden" name="assinatura_lider" id="assinatura_lider" data-field="signature_inspection2_name" value="{{ rnc.signature_inspection2_name or '' }}">
             </div>
         </div>
 
@@ -664,7 +681,7 @@
         <div style="margin: 25px 0; border: 1px solid #000; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);">
             <!-- Cabeçalho da Seção -->
             <div style="background: white; color: black; padding: 12px 20px; font-weight: bold; font-size: 15px; text-align: center; letter-spacing: 1px;">
-                 DESCRIÇÃO DA NÃO CONFORMIDADE
+                 DESCRIÇÃO DA NÃO CONFORMIDADE {% if is_reply and not is_admin %}<span style="font-size:11px;opacity:0.6">(somente admin)</span>{% endif %}
             </div>
 
             <!-- Conteúdo -->
@@ -676,7 +693,7 @@
                     </tr>
                     <tr>
                         <td style="width: 60px;"></td>
-                        <td><textarea id="description" name="description" class="input-field large-text-area" placeholder="Descreva a não conformidade identificada...">{{ txt_fields.get('Descrição da RNC', '') or txt_fields.get('Descrição do desenho', '') or rnc.description or '' }}</textarea></td>
+                        <td><textarea id="description" name="description" class="input-field large-text-area" placeholder="Descreva a não conformidade identificada..." {% if is_reply and not is_admin %}disabled style="background:#e9ecef;cursor:not-allowed;"{% endif %}>{{ txt_fields.get('Descrição da RNC', '') or txt_fields.get('Descrição do desenho', '') or rnc.description or '' }}</textarea></td>
                     </tr>
                 </table>
             </div>
@@ -688,7 +705,7 @@
         <div style="margin: 25px 0; border: 1px solid #000; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);">
             <!-- Cabeçalho da Seção -->
             <div style="background: white; color: black; padding: 12px 20px; font-weight: bold; font-size: 15px; text-align: center; letter-spacing: 1px;">
-                 INSTRUÇÃO PARA RETRABALHO
+                 INSTRUÇÃO PARA RETRABALHO {% if is_reply and not is_admin %}<span style="font-size:11px;opacity:0.6">(somente admin)</span>{% endif %}
             </div>
 
             <!-- Conteúdo -->
@@ -700,7 +717,7 @@
                     </tr>
                     <tr>
                         <td style="width: 60px;"></td>
-                        <td><textarea id="instruction_retrabalho" class="input-field medium-text-area" placeholder="Instruções detalhadas para correção...">{{ rnc.instruction_retrabalho or '' }}</textarea></td>
+                        <td><textarea id="instruction_retrabalho" class="input-field medium-text-area" placeholder="Instruções detalhadas para correção..." {% if is_reply and not is_admin %}disabled style="background:#e9ecef;cursor:not-allowed;"{% endif %}>{{ rnc.instruction_retrabalho or '' }}</textarea></td>
                     </tr>
                 </table>
             </div>
@@ -736,7 +753,7 @@
         <div style="margin: 25px 0; border: 1px solid #000; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);">
             <!-- Cabeçalho da Seção -->
             <div style="background: white; color: black; padding: 12px 20px; font-weight: bold; font-size: 15px; text-align: center; letter-spacing: 1px;">
-                 AÇÃO A SER TOMADA
+                 AÇÃO A SER TOMADA {% if is_reply and not is_admin and not is_manager %}<span style="font-size:11px;opacity:0.6">(somente admin)</span>{% endif %}
             </div>
 
             <!-- Conteúdo -->
@@ -748,7 +765,7 @@
                     </tr>
                     <tr>
                         <td style="width: 60px;"></td>
-                        <td><textarea id="action_rnc" class="input-field medium-text-area" placeholder="Ações corretivas e preventivas...">{{ rnc.action_rnc or '' }}</textarea></td>
+                        <td><textarea id="action_rnc" class="input-field medium-text-area" placeholder="Ações corretivas e preventivas..." {% if is_reply and not is_admin and not is_manager %}disabled style="background:#e9ecef;cursor:not-allowed;"{% endif %}>{{ rnc.action_rnc or '' }}</textarea></td>
                     </tr>
                 </table>
             </div>
@@ -760,7 +777,7 @@
         <div style="margin: 25px 0; border: 1px solid #000; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);">
             <!-- Cabeçalho da Seção -->
             <div style="background: white; color: black; padding: 12px 20px; font-weight: bold; font-size: 15px; text-align: center; letter-spacing: 1px;">
-                 DISPOSIÇÃO E INSPEÇÃO
+                 DISPOSIÇÃO E INSPEÇÃO {% if is_reply and not is_admin and not is_manager %}<span style="font-size:11px;opacity:0.6">(somente gerente/admin)</span>{% endif %}
             </div>
 
             <!-- Conteúdo -->
@@ -777,27 +794,27 @@
                     <div style="width: 50%; padding: 15px; border-right: 1px solid #000;">
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px; font-weight: bold;">
                             <div style="display: flex; align-items: center;">
-                                <input type="checkbox" id="usar" style="margin-right: 8px; width: 16px; height: 16px; accent-color: #6c757d;" {% if rnc.disposition_usar %}checked{% endif %}>
+                                <input type="checkbox" id="usar" style="margin-right: 8px; width: 16px; height: 16px; accent-color: #6c757d;" {% if rnc.disposition_usar %}checked{% endif %} {% if is_reply and not is_admin and not is_manager %}disabled{% endif %}>
                                 <label for="usar">USAR COMO ESTÁ</label>
                             </div>
                             <div style="display: flex; align-items: center;">
-                                <input type="checkbox" id="retrabalhar" style="margin-right: 8px; width: 16px; height: 16px; accent-color: #6c757d;" {% if rnc.disposition_retrabalhar %}checked{% endif %}>
+                                <input type="checkbox" id="retrabalhar" style="margin-right: 8px; width: 16px; height: 16px; accent-color: #6c757d;" {% if rnc.disposition_retrabalhar %}checked{% endif %} {% if is_reply and not is_admin and not is_manager %}disabled{% endif %}>
                                 <label for="retrabalhar">RETRABALHAR</label>
                             </div>
                             <div style="display: flex; align-items: center;">
-                                <input type="checkbox" id="rejeitar" style="margin-right: 8px; width: 16px; height: 16px; accent-color: #6c757d;" {% if rnc.disposition_rejeitar %}checked{% endif %}>
+                                <input type="checkbox" id="rejeitar" style="margin-right: 8px; width: 16px; height: 16px; accent-color: #6c757d;" {% if rnc.disposition_rejeitar %}checked{% endif %} {% if is_reply and not is_admin and not is_manager %}disabled{% endif %}>
                                 <label for="rejeitar">REJEITAR</label>
                             </div>
                             <div style="display: flex; align-items: center;">
-                                <input type="checkbox" id="sucata" style="margin-right: 8px; width: 16px; height: 16px; accent-color: #6c757d;" {% if rnc.disposition_sucata %}checked{% endif %}>
+                                <input type="checkbox" id="sucata" style="margin-right: 8px; width: 16px; height: 16px; accent-color: #6c757d;" {% if rnc.disposition_sucata %}checked{% endif %} {% if is_reply and not is_admin and not is_manager %}disabled{% endif %}>
                                 <label for="sucata">SUCATA</label>
                             </div>
                             <div style="display: flex; align-items: center;">
-                                <input type="checkbox" id="devolver_estoque" style="margin-right: 8px; width: 16px; height: 16px; accent-color: #6c757d;" {% if rnc.disposition_devolver_estoque %}checked{% endif %}>
+                                <input type="checkbox" id="devolver_estoque" style="margin-right: 8px; width: 16px; height: 16px; accent-color: #6c757d;" {% if rnc.disposition_devolver_estoque %}checked{% endif %} {% if is_reply and not is_admin and not is_manager %}disabled{% endif %}>
                                 <label for="devolver_estoque">DEVOLVER AO ESTOQUE</label>
                             </div>
                             <div style="display: flex; align-items: center;">
-                                <input type="checkbox" id="devolver_fornecedor" style="margin-right: 8px; width: 16px; height: 16px; accent-color: #6c757d;" {% if rnc.disposition_devolver_fornecedor %}checked{% endif %}>
+                                <input type="checkbox" id="devolver_fornecedor" style="margin-right: 8px; width: 16px; height: 16px; accent-color: #6c757d;" {% if rnc.disposition_devolver_fornecedor %}checked{% endif %} {% if is_reply and not is_admin and not is_manager %}disabled{% endif %}>
                                 <label for="devolver_fornecedor">DEVOLVER AO FORNECEDOR</label>
                             </div>
                         </div>
@@ -807,17 +824,17 @@
                     <div style="width: 50%; padding: 15px;">
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px; font-weight: bold;">
                             <div style="display: flex; align-items: center;">
-                                <input type="checkbox" id="aprovado" style="margin-right: 8px; width: 16px; height: 16px; accent-color: #28a745;" {% if rnc.inspection_aprovado %}checked{% endif %}>
+                                <input type="checkbox" id="aprovado" style="margin-right: 8px; width: 16px; height: 16px; accent-color: #28a745;" {% if rnc.inspection_aprovado %}checked{% endif %} {% if is_reply and not is_admin %}disabled{% endif %}>
                                 <label for="aprovado">APROVADO</label>
                             </div>
                             <div style="display: flex; align-items: center;">
-                                <input type="checkbox" id="reprovado" style="margin-right: 8px; width: 16px; height: 16px; accent-color: #dc3545;" {% if rnc.inspection_reprovado %}checked{% endif %}>
+                                <input type="checkbox" id="reprovado" style="margin-right: 8px; width: 16px; height: 16px; accent-color: #dc3545;" {% if rnc.inspection_reprovado %}checked{% endif %} {% if is_reply and not is_admin %}disabled{% endif %}>
                                 <label for="reprovado">REPROVADO</label>
                             </div>
                             <div style="display: flex; align-items: center;">
-                                <input type="checkbox" id="ver-rnc" style="margin-right: 8px; width: 16px; height: 16px; accent-color: #ffc107;" {% if rnc.inspection_ver_rnc %}checked{% endif %}>
+                                <input type="checkbox" id="ver-rnc" style="margin-right: 8px; width: 16px; height: 16px; accent-color: #ffc107;" {% if rnc.inspection_ver_rnc %}checked{% endif %} {% if is_reply and not is_admin %}disabled{% endif %}>
                                 <label for="ver-rnc">VER RNC. Nº:</label>
-                                <input type="text" id="ver_rnc_input" value="{{ rnc.inspection_ver_rnc or '' }}" style="border: none; border-bottom: 2px solid #6c757d; width: 120px; margin-left: 8px; font-size: 11px; padding: 2px; background: transparent;">
+                                <input type="text" id="ver_rnc_input" value="{{ rnc.inspection_ver_rnc or '' }}" style="border: none; border-bottom: 2px solid #6c757d; width: 120px; margin-left: 8px; font-size: 11px; padding: 2px;{% if is_reply and not is_admin %} background:#e9ecef;{% else %} background: transparent;{% endif %}" {% if is_reply and not is_admin %}disabled{% endif %}>
                             </div>
                         </div>
                     </div>
@@ -831,19 +848,19 @@
             <div style="display: flex; border-bottom: 1px solid #000;">
                 <div style="width: 33.33%; padding: 8px; text-align: center; font-size: 10px; font-weight: bold; border-right: 1px solid #000;">
                     <span>INSPEÇÃO: </span>
-                    <input id="insp1_d" type="text" style="border: none; border-bottom: 1px solid #000; width: 20px; text-align: center; font-size: 10px;" placeholder="__">
+                    <input id="insp1_d" type="text" style="border: none; border-bottom: 1px solid #000; width: 20px; text-align: center; font-size: 10px;{% if is_reply and not is_admin %} background:#e9ecef;{% endif %}" placeholder="__" {% if is_reply and not is_admin %}disabled{% endif %}>
                     <span>/</span>
-                    <input id="insp1_m" type="text" style="border: none; border-bottom: 1px solid #000; width: 20px; text-align: center; font-size: 10px;" placeholder="__">
+                    <input id="insp1_m" type="text" style="border: none; border-bottom: 1px solid #000; width: 20px; text-align: center; font-size: 10px;{% if is_reply and not is_admin %} background:#e9ecef;{% endif %}" placeholder="__" {% if is_reply and not is_admin %}disabled{% endif %}>
                     <span>/</span>
-                    <input id="insp1_y" type="text" style="border: none; border-bottom: 1px solid #000; width: 40px; text-align: center; font-size: 10px;" placeholder="____">
+                    <input id="insp1_y" type="text" style="border: none; border-bottom: 1px solid #000; width: 40px; text-align: center; font-size: 10px;{% if is_reply and not is_admin %} background:#e9ecef;{% endif %}" placeholder="____" {% if is_reply and not is_admin %}disabled{% endif %}>
                 </div>
                 <div style="width: 33.33%; padding: 8px; text-align: center; font-size: 10px; font-weight: bold; border-right: 1px solid #000;">
                     <span>INSPEÇÃO: </span>
-                    <input id="eng_d" type="text" style="border: none; border-bottom: 1px solid #000; width: 20px; text-align: center; font-size: 10px;" placeholder="__">
+                    <input id="eng_d" type="text" style="border: none; border-bottom: 1px solid #000; width: 20px; text-align: center; font-size: 10px;{% if is_reply and not is_admin %} background:#e9ecef;{% endif %}" placeholder="__" {% if is_reply and not is_admin %}disabled{% endif %}>
                     <span>/</span>
-                    <input id="eng_m" type="text" style="border: none; border-bottom: 1px solid #000; width: 20px; text-align: center; font-size: 10px;" placeholder="__">
+                    <input id="eng_m" type="text" style="border: none; border-bottom: 1px solid #000; width: 20px; text-align: center; font-size: 10px;{% if is_reply and not is_admin %} background:#e9ecef;{% endif %}" placeholder="__" {% if is_reply and not is_admin %}disabled{% endif %}>
                     <span>/</span>
-                    <input id="eng_y" type="text" style="border: none; border-bottom: 1px solid #000; width: 40px; text-align: center; font-size: 10px;" placeholder="____">
+                    <input id="eng_y" type="text" style="border: none; border-bottom: 1px solid #000; width: 40px; text-align: center; font-size: 10px;{% if is_reply and not is_admin %} background:#e9ecef;{% endif %}" placeholder="____" {% if is_reply and not is_admin %}disabled{% endif %}>
                 </div>
                 <div style="width: 33.33%; padding: 8px; text-align: center; font-size: 10px; font-weight: bold;">
                     <span>INSPEÇÃO: </span>
@@ -857,16 +874,16 @@
 
                          <!-- Signature Row -->
              <div style="display: flex;">
-                 <div id="assinatura_coluna1" style="width: 33.33%; padding: 15px; text-align: center; font-size: 11px; font-weight: bold; border-right: 1px solid #000; background: #6c757d; color: white; cursor: pointer;" onclick="preencherAssinatura(this)">
+                 <div id="assinatura_coluna1" style="width: 33.33%; padding: 15px; text-align: center; font-size: 11px; font-weight: bold; border-right: 1px solid #000; background: #6c757d; color: white;{% if is_reply and not is_admin %} pointer-events: none; opacity: 0.7;{% else %} cursor: pointer;{% endif %}" {% if not is_reply or is_admin %}onclick="preencherAssinatura(this)"{% endif %}>
                      <div id="nome_coluna1" style="margin-bottom: 25px;">{{ rnc.signature_inspection_name or 'NOME' }}</div>
                      <div style="border-top: 1px solid #6c757d; padding-top: 8px;">VISTO - Qualidade</div>
                  </div>
-                 <div id="assinatura_coluna2" style="width: 33.33%; padding: 15px; text-align: center; font-size: 11px; font-weight: bold; border-right: 1px solid #000; cursor: pointer;" onclick="preencherAssinatura(this)">
-                     <div id="nome_coluna2" style="margin-bottom: 25px;">{{ rnc.signature_engineering_name or 'NOME' }}</div>
+                 <div id="assinatura_coluna2" style="width: 33.33%; padding: 15px; text-align: center; font-size: 11px; font-weight: bold; border-right: 1px solid #000;{% if is_reply and not is_admin and not is_manager %} pointer-events: none; opacity: 0.7;{% else %} cursor: pointer;{% endif %}" {% if not is_reply or is_admin or is_manager %}onclick="preencherAssinatura(this)"{% endif %}>
+                     <div id="nome_coluna2" style="margin-bottom: 25px;">{{ rnc.signature_engineering_name or rnc.ass_responsavel or rnc.gerente_grupo_name or 'NOME' }}</div>
                      <div style="border-top: 1px solid #6c757d; padding-top: 8px;">VISTO - Gerente do Setor</div>
                  </div>
                  <div id="assinatura_coluna3" style="width: 33.33%; padding: 15px; text-align: center; font-size: 11px; font-weight: bold; cursor: pointer;" onclick="preencherAssinatura(this)">
-                     <div id="nome_coluna3" style="margin-bottom: 25px;">{{ rnc.signature_inspection2_name or 'NOME' }}</div>
+                     <div id="nome_coluna3" style="margin-bottom: 25px;">{{ rnc.signature_inspection2_name or rnc.causador_name or 'NOME' }}</div>
                      <div style="border-top: 1px solid #6c757d; padding-top: 8px;">VISTO - Causador</div>
                  </div>
              </div>
@@ -1116,6 +1133,46 @@
                 row.style.display = (t.includes(term) ? '' : 'none');
             });
         }
+        function limparValorTotal() {
+            const priceInput = document.getElementById('price');
+            const listDiv = document.getElementById('selectedValoresList');
+            if (!priceInput) return;
+            
+            if (priceInput.value && priceInput.value !== 'R$ 0,00' && priceInput.value !== '') {
+                if (!confirm('Deseja limpar o valor total e todos os itens selecionados?')) return;
+            }
+            
+            priceInput.value = 'R$ 0,00';
+            selectedValoresData = [];
+            if (listDiv) {
+                listDiv.style.display = 'none';
+                listDiv.innerHTML = '';
+            }
+            
+            const checkboxes = document.querySelectorAll('.valor-checkbox');
+            checkboxes.forEach(cb => {
+                if (cb.checked) {
+                    cb.checked = false;
+                    const row = cb.closest('tr');
+                    const horasInput = row ? row.querySelector('.horas-input') : null;
+                    if (horasInput) {
+                        horasInput.disabled = true;
+                        horasInput.value = '01:00';
+                        horasInput.style.cursor = 'not-allowed';
+                        horasInput.style.backgroundColor = '#e9ecef';
+                    }
+                    if (row) row.style.background = '';
+                }
+            });
+            
+            const sa = document.getElementById('selectAllValores');
+            if (sa) sa.checked = false;
+            
+            updateModalTotal();
+            updateSelectedCount();
+            
+            console.log('💰 LIMPAR: Valor definido como R$ 0,00');
+        }
     </script>
     
     <!-- Barra de ações moderna -->
@@ -1223,17 +1280,6 @@
                         if (assResponsavelInput) assResponsavelInput.value = '';
                         if (typeof mostrarNotificacao === 'function') mostrarNotificacao(' Nenhum gerente definido para este setor', 'error');
                     }
-                    // Atualizar a data de emissão para hoje (mesmo comportamento da criação)
-                    try {
-                        const dataEmissaoInput = document.getElementById('data_emissao');
-                        if (dataEmissaoInput) {
-                            const hoje = new Date();
-                            const d = String(hoje.getDate()).padStart(2,'0');
-                            const m = String(hoje.getMonth()+1).padStart(2,'0');
-                            const y = String(hoje.getFullYear());
-                            dataEmissaoInput.value = `${d}/${m}/${y}`;
-                        }
-                    } catch(_) {}
                 } else {
                     console.warn(' Resposta inválida de /api/admin/groups/with-managers');
                 }
@@ -1248,12 +1294,21 @@
                 const assinaturaLiderInput = document.getElementById('assinatura_lider');
 
                 if (nomeResponsavelSelect) {
+                    // Preservar valor selecionado atual
+                    const currentSelectedValue = nomeResponsavelSelect.value;
+                    const currentSelectedText = currentSelectedValue ? nomeResponsavelSelect.options[nomeResponsavelSelect.selectedIndex]?.textContent : '';
+                    
+                    console.log('🔍 Valor causador atual antes de limpar:', {
+                        value: currentSelectedValue,
+                        text: currentSelectedText
+                    });
+                    
                     // Limpar dropdown
                     nomeResponsavelSelect.innerHTML = '<option value="">Selecione o Usuário Causador</option>';
                     nomeResponsavelSelect.disabled = true;
 
-                    // Limpar assinatura do causador ao trocar setor
-                    if (assinaturaLiderInput) assinaturaLiderInput.value = '';
+                    // NÃO limpar assinatura do causador se já houver um valor
+                    // if (assinaturaLiderInput) assinaturaLiderInput.value = '';
 
                     // Garantir usuários carregados
                     if (!window.allUsers || window.allUsers.length === 0) {
@@ -1282,14 +1337,30 @@
                     });
 
                     groupUsers.sort((a,b) => String(a.name||'').localeCompare(String(b.name||'')));
+                    
+                    let optionToReselect = null;
                     groupUsers.forEach(u => {
                         const opt = document.createElement('option');
                         // Igual à criação: value deve ser o ID do usuário
                         opt.value = u.id;
                         opt.textContent = `${u.name}${u.department ? ' ('+u.department+')' : ''}`;
                         nomeResponsavelSelect.appendChild(opt);
+                        
+                        // Verificar se este é o usuário que estava selecionado
+                        if (currentSelectedValue && (String(u.id) === String(currentSelectedValue) || String(u.name) === String(currentSelectedValue))) {
+                            optionToReselect = opt;
+                        }
                     });
+                    
                     nomeResponsavelSelect.disabled = false;
+                    
+                    // Reselecionar o valor anterior se encontrado
+                    if (optionToReselect) {
+                        nomeResponsavelSelect.value = optionToReselect.value;
+                        console.log('✅ Valor causador restaurado:', optionToReselect.textContent);
+                    } else if (currentSelectedValue) {
+                        console.warn('⚠️ Valor causador anterior não encontrado no novo setor:', currentSelectedValue);
+                    }
                 }
             } catch (e) {
                 console.warn(' Falha ao atualizar lista de usuários do setor selecionado', e);
@@ -1298,8 +1369,27 @@
         
         // Função chamada quando o nome do responsável é alterado (causador)
         function onNomeResponsavelChange() {
-            console.log(' Nome responsável (causador) alterado');
-            // Aqui pode adicionar lógica adicional se necessário
+            const select = document.getElementById('nome_responsavel');
+            if (!select) return;
+            const selectedOption = select.options[select.selectedIndex];
+            const causadorName = selectedOption ? selectedOption.textContent : '';
+            const nomeColuna3 = document.getElementById('nome_coluna3');
+            if (nomeColuna3) {
+                if (select.value && causadorName) {
+                    nomeColuna3.textContent = causadorName;
+                    const hoje = new Date();
+                    const insp2D = document.getElementById('insp2_d');
+                    const insp2M = document.getElementById('insp2_m');
+                    const insp2Y = document.getElementById('insp2_y');
+                    if (insp2D && insp2M && insp2Y) {
+                        insp2D.value = String(hoje.getDate()).padStart(2, '0');
+                        insp2M.value = String(hoje.getMonth() + 1).padStart(2, '0');
+                        insp2Y.value = String(hoje.getFullYear());
+                    }
+                } else {
+                    nomeColuna3.textContent = 'NOME';
+                }
+            }
         }
 
         // Função para preencher assinatura automaticamente - DEFINIDA DIRETAMENTE NO WINDOW
@@ -1441,35 +1531,48 @@
             }
             
             // Dados técnicos do produto
+            if (!disabledFieldNames.has('drawing')) {
+                const drawingInput = document.querySelector('input[name="drawing"]');
+                if (drawingInput) formData.drawing = drawingInput.value || '';
+            }
             if (!disabledFieldNames.has('mp')) {
-                formData.mp = document.getElementById('mp')?.value || '';
+                const mpInput = document.querySelector('input[name="mp"]');
+                if (mpInput) formData.mp = mpInput.value || '';
             }
             if (!disabledFieldNames.has('revision')) {
-                formData.revision = document.getElementById('revision')?.value || '';
+                const revisionInput = document.querySelector('input[name="revision"]');
+                if (revisionInput) formData.revision = revisionInput.value || '';
             }
             if (!disabledFieldNames.has('position')) {
-                formData.position = document.getElementById('position')?.value || '';
+                const positionInput = document.querySelector('input[name="position"]');
+                if (positionInput) formData.position = positionInput.value || '';
             }
             if (!disabledFieldNames.has('cv')) {
-                formData.cv = document.getElementById('cv')?.value || '';
+                const cvInput = document.querySelector('input[name="cv"]');
+                if (cvInput) formData.cv = cvInput.value || '';
             }
             if (!disabledFieldNames.has('conjunto')) {
-                formData.conjunto = document.getElementById('conjunto')?.value || '';
+                const conjuntoInput = document.querySelector('input[name="conjunto"]');
+                if (conjuntoInput) formData.conjunto = conjuntoInput.value || '';
             }
             if (!disabledFieldNames.has('modelo')) {
-                formData.modelo = document.getElementById('modelo')?.value || '';
+                const modeloInput = document.querySelector('input[name="modelo"]');
+                if (modeloInput) formData.modelo = modeloInput.value || '';
             }
             if (!disabledFieldNames.has('description_drawing')) {
-                formData.description_drawing = document.getElementById('description_drawing')?.value || '';
+                const descDrawingInput = document.querySelector('input[name="description_drawing"]');
+                if (descDrawingInput) formData.description_drawing = descDrawingInput.value || '';
             }
             if (!disabledFieldNames.has('quantity')) {
                 formData.quantity = document.getElementById('quantity')?.value || '';
             }
             if (!disabledFieldNames.has('material')) {
-                formData.material = document.getElementById('material')?.value || '';
+                const materialInput = document.querySelector('input[name="material"]');
+                if (materialInput) formData.material = materialInput.value || '';
             }
             if (!disabledFieldNames.has('purchase_order')) {
-                formData.purchase_order = document.getElementById('purchase_order')?.value || '';
+                const purchaseInput = document.querySelector('input[name="purchase_order"]');
+                if (purchaseInput) formData.purchase_order = purchaseInput.value || '';
             }
             
             // Responsabilidades (igualar à criação)
@@ -1512,8 +1615,20 @@
                     }
                 }
             }
-            if (!disabledFieldNames.has('created_at')) {
-                formData.created_at = document.getElementById('created_at')?.value || '';
+            // Data de emissão (created_at) - SEMPRE enviar independente de bloqueio
+            const dataEmissaoField = document.getElementById('data_emissao');
+            if (dataEmissaoField && dataEmissaoField.value) {
+                // Converter YYYY-MM-DD (input date) para DD/MM/YYYY (formato BR)
+                const isoDate = dataEmissaoField.value;
+                if (isoDate && isoDate.includes('-')) {
+                    const parts = isoDate.split('-');
+                    if (parts.length === 3) {
+                        formData.created_at = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                        console.log('📅 Data convertida para BR:', isoDate, '→', formData.created_at);
+                    }
+                } else {
+                    formData.created_at = isoDate;
+                }
             }
             
             // Seções textuais
@@ -1527,15 +1642,20 @@
                 formData.action_rnc = document.getElementById('action_rnc')?.value || '';
             }
             
-            // Valor/Custo
-            if (!disabledFieldNames.has('price')) {
-                {
-                    const priceRaw = document.getElementById('price')?.value || '';
+            // Valor/Custo - SEMPRE ENVIAR (ignorar bloqueio)
+            {
+                const priceRaw = document.getElementById('price')?.value || '';
+                console.log('💰 PRICE DEBUG FRONTEND: priceRaw =', priceRaw);
+                if (priceRaw === '' || priceRaw === 'R$ 0,00' || !priceRaw) {
+                    formData.price = 0;
+                    console.log('💰 PRICE: definido como 0 (campo vazio)');
+                } else {
                     const numeric = parseFloat(String(priceRaw).replace(/[^0-9,.-]/g,'').replace(/\.(?=\d{3})/g,'').replace(',', '.'));
-                    formData.price = isNaN(numeric) ? null : numeric;
+                    formData.price = isNaN(numeric) ? 0 : numeric;
+                    console.log('💰 PRICE: definido como', formData.price);
                 }
-                formData.price_note = document.getElementById('price_note')?.value || '';
             }
+            formData.price_note = document.getElementById('price_note')?.value || '';
             
             {% else %}
             // Modo CRIAÇÃO: coletar todos os campos normalmente
@@ -1544,16 +1664,49 @@
             formData.equipment = document.getElementById('equipment')?.value ?? {{ (rnc.equipment or "") | tojson }};
             formData.client = document.getElementById('client')?.value ?? {{ (rnc.client or "") | tojson }};
             formData.rnc_number = document.getElementById('rnc_number')?.value || {{ rnc.rnc_number | tojson }};
-            formData.mp = document.getElementById('mp')?.value || '';
-            formData.revision = document.getElementById('revision')?.value || '';
-            formData.position = document.getElementById('position')?.value || '';
-            formData.cv = document.getElementById('cv')?.value || '';
-            formData.conjunto = document.getElementById('conjunto')?.value || '';
-            formData.modelo = document.getElementById('modelo')?.value || '';
-            formData.description_drawing = document.getElementById('description_drawing')?.value || '';
+            
+            // DESENHO
+            const drawingInputCreate = document.querySelector('input[name="drawing"]');
+            formData.drawing = drawingInputCreate ? drawingInputCreate.value : '';
+            
+            // MP
+            const mpInputCreate = document.querySelector('input[name="mp"]');
+            formData.mp = mpInputCreate ? mpInputCreate.value : '';
+            
+            // REVISÃO
+            const revisionInputCreate = document.querySelector('input[name="revision"]');
+            formData.revision = revisionInputCreate ? revisionInputCreate.value : '';
+            
+            // POSIÇÃO
+            const positionInputCreate = document.querySelector('input[name="position"]');
+            formData.position = positionInputCreate ? positionInputCreate.value : '';
+            
+            // CV
+            const cvInputCreate = document.querySelector('input[name="cv"]');
+            formData.cv = cvInputCreate ? cvInputCreate.value : '';
+            
+            // CONJUNTO
+            const conjuntoInputCreate = document.querySelector('input[name="conjunto"]');
+            formData.conjunto = conjuntoInputCreate ? conjuntoInputCreate.value : '';
+            
+            // MODELO
+            const modeloInputCreate = document.querySelector('input[name="modelo"]');
+            formData.modelo = modeloInputCreate ? modeloInputCreate.value : '';
+            
+            // DESCRIÇÃO DO DESENHO
+            const descDrawingInputCreate = document.querySelector('input[name="description_drawing"]');
+            formData.description_drawing = descDrawingInputCreate ? descDrawingInputCreate.value : '';
+            
             formData.quantity = document.getElementById('quantity')?.value || '';
-            formData.material = document.getElementById('material')?.value || '';
-            formData.purchase_order = document.getElementById('purchase_order')?.value || '';
+            
+            // MATERIAL
+            const materialInputCreate = document.querySelector('input[name="material"]');
+            formData.material = materialInputCreate ? materialInputCreate.value : '';
+            
+            // PURCHASE ORDER
+            const purchaseInputCreate = document.querySelector('input[name="purchase_order"]');
+            formData.purchase_order = purchaseInputCreate ? purchaseInputCreate.value : '';
+            
             formData.assigned_user_id = document.getElementById('assigned_user_id')?.value || '';
             formData.responsavel = document.getElementById('responsavel')?.value || '';
             formData.inspetor = document.getElementById('inspetor')?.value || '';
@@ -1564,8 +1717,12 @@
             formData.action_rnc = document.getElementById('action_rnc')?.value || '';
             {
                 const priceRaw = document.getElementById('price')?.value || '';
-                const numeric = parseFloat(String(priceRaw).replace(/[^0-9,.-]/g,'').replace(/\.(?=\d{3})/g,'').replace(',', '.'));
-                formData.price = isNaN(numeric) ? null : numeric;
+                if (priceRaw === '' || priceRaw === 'R$ 0,00' || !priceRaw) {
+                    formData.price = 0;
+                } else {
+                    const numeric = parseFloat(String(priceRaw).replace(/[^0-9,.-]/g,'').replace(/\.(?=\d{3})/g,'').replace(',', '.'));
+                    formData.price = isNaN(numeric) ? 0 : numeric;
+                }
             }
             formData.price_note = document.getElementById('price_note')?.value || '';
             {% endif %}
@@ -1638,7 +1795,37 @@
                 
                 // ADICIONAR APENAS SE NÃO BLOQUEADOS
                 
-                // Assinaturas
+                // Campos do Cabeçalho
+                if (!disabledFieldNames.has('area_responsavel')) {
+                    const areaSelect = document.getElementById('area_responsavel_select');
+                    if (areaSelect) formData.area_responsavel = areaSelect.value || '';
+                }
+                if (!disabledFieldNames.has('ass_responsavel')) {
+                    const assResp = document.getElementById('ass_responsavel');
+                    if (assResp) formData.ass_responsavel = assResp.value || '';
+                }
+                if (!disabledFieldNames.has('data_emissao')) {
+                    const dataEm = document.getElementById('data_emissao');
+                    if (dataEm) formData.data_emissao = dataEm.value || '';
+                }
+                if (!disabledFieldNames.has('nome_responsavel')) {
+                    const nomeResp = document.getElementById('nome_responsavel');
+                    if (nomeResp) formData.nome_responsavel = nomeResp.value || '';
+                }
+                if (!disabledFieldNames.has('assinatura_causador')) {
+                    const assCaus = document.getElementById('assinatura_causador');
+                    if (assCaus) formData.assinatura_causador = assCaus.value || '';
+                }
+                if (!disabledFieldNames.has('assinatura_lider')) {
+                    const assLider = document.getElementById('assinatura_lider');
+                    if (assLider) formData.assinatura_lider = assLider.value || '';
+                }
+                if (!disabledFieldNames.has('inspetor')) {
+                    const insp = document.getElementById('inspetor');
+                    if (insp) formData.inspetor = insp.value || '';
+                }
+                
+                // Assinaturas Rodapé
                 if (!disabledFieldNames.has('signature_inspection_name')) {
                     formData.signature_inspection_name = document.getElementById('nome_coluna1')?.textContent || '';
                 }
@@ -1756,10 +1943,17 @@
             .then(data => {
                 if (data.success) {
                     try { localStorage.removeItem('dashboardCacheV1'); } catch(e){}
+                    console.log('✅ Salvamento bem-sucedido, redirecionando para visualização...');
                     mostrarNotificacao(' Alterações salvas com sucesso!');
+                    
+                    // Forçar refresh do dashboard via localStorage
+                    try { localStorage.setItem('forceRefreshDashboard', Date.now().toString()); } catch(e){}
+                    
                     setTimeout(() => {
                         const ts = Date.now();
-                        window.location.href = '/rnc/{{ rnc.id }}?_t=' + ts;
+                        const targetUrl = '/rnc/{{ rnc.id }}?_t=' + ts;
+                        console.log('🔄 Redirecionando para:', targetUrl);
+                        window.location.replace(targetUrl);
                     }, 1000);
                 } else {
                     mostrarNotificacao(' Erro ao salvar alterações: ' + data.message, 'error');
@@ -1827,6 +2021,12 @@
                         return;
                     }
 
+                    // Manter disabled se usuário comum em modo resposta
+                    if (IS_REPLY && !IS_ADMIN) {
+                        select.disabled = true;
+                        select.style.background = '#e9ecef';
+                    }
+
                     // Resetar opções
                     select.innerHTML = '<option value="">Selecione a Área Responsável</option>';
 
@@ -1851,6 +2051,14 @@
                     }
                     if (selectedId) {
                         select.value = selectedId;
+                    }
+
+                    // Garantir disabled para usuário comum em modo resposta (após todo processamento)
+                    if (IS_REPLY && !IS_ADMIN) {
+                        select.disabled = true;
+                        select.style.background = '#e9ecef';
+                        select.style.pointerEvents = 'none';
+                        console.log('Select area_responsavel bloqueado para usuário comum');
                     }
 
                     console.log('[edit] Grupos carregados:', data.groups.length, 'selecionado:', select.value);
@@ -1885,6 +2093,16 @@
                     if (select) {
                         console.log('Opções antes de limpar:', select.options.length);
                         
+                        // Preservar valor atual selecionado antes de limpar
+                        const currentValue = select.value;
+                        console.log('Valor atual preservado:', currentValue);
+                        
+                        // Manter disabled se usuário comum em modo resposta
+                        if (IS_REPLY && !IS_ADMIN) {
+                            select.disabled = true;
+                            select.style.background = '#e9ecef';
+                        }
+                        
                         // Limpar opções existentes (exceto a primeira)
                         while (select.options.length > 1) {
                             select.remove(1);
@@ -1908,7 +2126,17 @@
                         const currentResponsavelName = "{{ rnc.causador_name or '' }}";
                         const currentResponsavelId = "{{ rnc.responsavel or '' }}";
                         const currentResponsavelAlt = "{{ rnc.nome_responsavel or rnc.signature_inspection2_name or '' }}";
-                        const currentResponsavel = currentResponsavelName || currentResponsavelAlt || currentResponsavelId;
+                        const responsavelNameFromTemplate = "{{ rnc.responsavel_name or '' }}";
+                        
+                        console.log('🔍 DEBUG CAUSADOR:', {
+                            causador_name: currentResponsavelName,
+                            responsavel_id: currentResponsavelId,
+                            responsavel_name: responsavelNameFromTemplate,
+                            currentValue: currentValue,
+                            alt: currentResponsavelAlt
+                        });
+                        
+                        const currentResponsavel = currentValue || currentResponsavelName || responsavelNameFromTemplate || currentResponsavelAlt || currentResponsavelId;
                         
                         if (currentResponsavel) {
                             const norm = (s) => (s || '').toString().trim().toLowerCase();
@@ -1968,7 +2196,17 @@
                             }
                         }
                         
+                        // Garantir disabled para usuário comum em modo resposta (após todo processamento)
+                        // Gerentes também podem editar
+                        if (IS_REPLY && !IS_ADMIN && !IS_MANAGER) {
+                            select.disabled = true;
+                            select.style.background = '#e9ecef';
+                            select.style.pointerEvents = 'none';
+                            console.log('Select nome_responsavel bloqueado para usuário comum');
+                        }
+                        
                         console.log('Select de usuários causadores populado com', data.users.length, 'usuários');
+                        
                     } else {
                         console.error('Select nome_responsavel não encontrado');
                     }
@@ -1982,6 +2220,43 @@
 
         document.addEventListener('DOMContentLoaded', function() {
             console.log('DOM carregado - inicializando...');
+            
+            // CARREGAR DATA DE EMISSÃO (created_at)
+            try {
+                const brDate = '{{ rnc.created_at }}';
+                const inputField = document.getElementById('data_emissao');
+                
+                console.log('🗓️ DEBUG created_at raw:', brDate, 'tipo:', typeof brDate);
+                
+                if (brDate && brDate.trim()) {
+                    let isoDate = brDate;
+                    
+                    // Se formato BR (DD/MM/YYYY), converter para ISO (YYYY-MM-DD)
+                    if (brDate.includes('/')) {
+                        const parts = brDate.split('/');
+                        if (parts.length === 3 && parts[0].length <= 2) {
+                            isoDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                            console.log('Data convertida BR→ISO:', brDate, '→', isoDate);
+                        }
+                    }
+                    // Se já está em formato ISO (YYYY-MM-DD), usar direto
+                    else if (brDate.match(/^\d{4}-\d{2}-\d{2}/)) {
+                        isoDate = brDate.substring(0, 10);
+                        console.log('Data já em formato ISO:', isoDate);
+                    }
+                    
+                    if (inputField && isoDate) {
+                        inputField.value = isoDate;
+                        console.log('✓ Data aplicada ao input:', isoDate);
+                    } else {
+                        console.warn('Input data_emissao não encontrado ou data inválida');
+                    }
+                } else {
+                    console.warn('created_at vazio ou inválido');
+                }
+            } catch (e) {
+                console.error('Erro ao carregar data de emissão:', e);
+            }
             
             try {
                 fetch('/api/user/info', { credentials: 'include' })
@@ -2012,9 +2287,14 @@
             
             Promise.all([loadGroups(), loadUsers()]).then(() => {
                 console.log('Grupos e usuários carregados');
+                
+                // Se o setor já está selecionado, popular dropdown com usuários do setor
                 const sel = document.getElementById('area_responsavel_select');
                 if (sel && sel.value) {
+                    console.log('Setor já selecionado, populando usuários do setor...');
                     onAreaResponsavelChange();
+                } else {
+                    console.log('Nenhum setor selecionado ainda');
                 }
             }).catch(err => console.error('Erro ao carregar grupos/usuários', err));
 
@@ -2077,15 +2357,29 @@
                     // Inspeções
                     'inspection_aprovado': 'aprovado',
                     'inspection_reprovado': 'reprovado',
-                    'inspection_ver_rnc': 'ver_rnc_input'
+                    'inspection_ver_rnc': 'ver_rnc_input',
+                    // Assinaturas Cabeçalho
+                    'area_responsavel': 'area_responsavel_select',
+                    'ass_responsavel': 'ass_responsavel',
+                    'data_emissao': 'data_emissao',
+                    'assinatura_causador': 'assinatura_causador',
+                    'nome_responsavel': 'nome_responsavel',
+                    'assinatura_lider': 'assinatura_lider',
+                    // Assinaturas Rodapé (DIVs editáveis)
+                    'signature_inspection_name': 'nome_coluna1',
+                    'signature_engineering_name': 'nome_coluna2',
+                    'signature_inspection2_name': 'nome_coluna3',
+                    // Observação de Valor
+                    'price_note': 'price_note'
                 };
                 
                 fetch('/admin/field-locks/api/user/locked-fields?context=response', { credentials: 'include' })
                     .then(r => r.json())
                     .then(data => {
+                        console.log('📋 Resposta da API de campos bloqueados:', data);
                         if (data && data.success && data.locked_fields) {
                             const lockedFields = data.locked_fields;
-                            console.log(` ${lockedFields.length} campos bloqueados:`, lockedFields);
+                            console.log(`🔒 ${lockedFields.length} campos bloqueados para resposta da RNC:`, lockedFields);
                             
                             // IMPORTANTE: Armazenar campos bloqueados para uso na função salvarAlteracoes
                             window.apiBlockedFields = lockedFields;
@@ -2097,9 +2391,39 @@
                                 const field = document.getElementById(actualId);
                                 
                                 if (field) {
-                                    // SOLUÇÃO: Usar readonly para TODOS os campos (mantém valores visíveis)
-                                    field.readOnly = true;
-                                    field.setAttribute('readonly', 'readonly');
+                                    // Para DIVs editáveis (assinaturas do rodapé) - nome_coluna1, nome_coluna2, nome_coluna3
+                                    if (field.tagName === 'DIV') {
+                                        field.contentEditable = 'false';
+                                        field.style.backgroundColor = '#e9ecef';
+                                        field.style.cursor = 'not-allowed';
+                                        field.style.opacity = '1';
+                                        field.style.color = '#212529';
+                                        field.style.fontWeight = '500';
+                                        field.style.border = '2px solid #adb5bd';
+                                        field.style.pointerEvents = 'none';  // CRÍTICO: Bloqueia TODOS os eventos
+                                        field.title = '🔒 Campo bloqueado para seu grupo';
+                                        
+                                        // Bloquear eventos de edição
+                                        field.addEventListener('click', (e) => e.preventDefault(), true);
+                                        field.addEventListener('dblclick', (e) => e.preventDefault(), true);
+                                        field.addEventListener('keydown', (e) => e.preventDefault(), true);
+                                        field.addEventListener('paste', (e) => e.preventDefault(), true);
+                                        
+                                        console.log(`  ✅ DIV '${fieldName}' bloqueado (ID: ${actualId})`);
+                                        return;
+                                    }
+                                    
+                                    // SOLUÇÃO: Usar readonly para inputs/textareas (mantém valores visíveis)
+                                    if (field.tagName === 'INPUT' || field.tagName === 'TEXTAREA') {
+                                        field.readOnly = true;
+                                        field.setAttribute('readonly', 'readonly');
+                                        field.style.pointerEvents = 'none';  // CRÍTICO: Bloqueia cliques
+                                        
+                                        // Bloquear eventos de edição por segurança extra
+                                        field.addEventListener('keydown', (e) => e.preventDefault(), true);
+                                        field.addEventListener('paste', (e) => e.preventDefault(), true);
+                                        field.addEventListener('cut', (e) => e.preventDefault(), true);
+                                    }
                                     
                                     // Estilos para indicar bloqueio MAS manter legibilidade TOTAL
                                     field.style.backgroundColor = '#e9ecef';  // Cinza muito claro
@@ -2108,7 +2432,7 @@
                                     field.style.color = '#212529';  // Texto preto/escuro - fácil leitura
                                     field.style.fontWeight = '500';  // Negrito leve
                                     field.style.border = '2px solid #adb5bd';  // Borda cinza para indicar bloqueio
-                                    field.title = ` Campo bloqueado para seu grupo (somente leitura) - valores preenchidos pelo usuário anterior`;
+                                    field.title = `🔒 Campo bloqueado para seu grupo (somente leitura)`;
                                     
                                     // Para checkboxes: desabilitar interação mas manter visual
                                     if (field.type === 'checkbox') {
@@ -2118,27 +2442,25 @@
                                     }
                                     
                                 // Para selects: desabilitar mas manter texto legível
-                                // EXCETO area_responsavel_select e nome_responsavel que SEMPRE devem funcionar
                                 if (field.tagName === 'SELECT') {
-                                    if (actualId !== 'area_responsavel_select' && actualId !== 'nome_responsavel') {
-                                        field.disabled = true;
-                                        field.style.opacity = '1';
-                                        field.style.color = '#212529';
-                                    } else {
-                                        console.log(`  Select ${actualId} mantido ATIVO (excluído do bloqueio)`);
-                                    }
+                                    field.disabled = true;
+                                    field.style.opacity = '1';
+                                    field.style.color = '#212529';
+                                    field.style.pointerEvents = 'none';
                                 }                                    // Adicionar ícone de cadeado visual
                                     const td = field.closest('td');
                                     if (td && !td.querySelector('.lock-icon')) {
                                         const lockIcon = document.createElement('span');
                                         lockIcon.className = 'lock-icon';
-                                        lockIcon.innerHTML = '';
+                                        lockIcon.innerHTML = '🔒';
                                         lockIcon.style.cssText = 'position: absolute; top: 8px; right: 8px; font-size: 14px; opacity: 0.5;';
                                         td.style.position = 'relative';
                                         td.appendChild(lockIcon);
                                     }
                                     
-                                    console.log(`  Campo '${fieldName}' bloqueado (readonly + valores VISÍVEIS)`);
+                                    console.log(`  ✅ Campo '${fieldName}' bloqueado (ID: ${actualId})`);
+                                } else {
+                                    console.log(`  ⚠️ Campo '${fieldName}' não encontrado no DOM (ID tentado: ${actualId})`);
                                 }
                                 
                                 // BLOQUEAR BOTÃO "Adicionar Valores" se campo price estiver bloqueado
@@ -2150,10 +2472,10 @@
                                         addValoresBtn.style.backgroundColor = '#6c757d';
                                         addValoresBtn.style.cursor = 'not-allowed';
                                         addValoresBtn.style.opacity = '0.5';
-                                        addValoresBtn.title = ' Bloqueado: campo de valor está bloqueado para seu grupo';
-                                        addValoresBtn.onmouseover = null;
-                                        addValoresBtn.onmouseout = null;
-                                        console.log('  Botão "Adicionar Valores" bloqueado');
+                                        addValoresBtn.style.pointerEvents = 'none';  // CRÍTICO: Bloqueia cliques
+                                        addValoresBtn.title = '🔒 Bloqueado: campo de valor está bloqueado para seu grupo';
+                                        addValoresBtn.onclick = null;  // Remove handler de click
+                                        console.log('  🔒 Botão "Adicionar Valores" bloqueado');
                                     }
                                     // Manter valor do price bem visível com destaque verde
                                     if (priceInput) {
@@ -2184,16 +2506,6 @@
                     this.style.height = this.scrollHeight + 'px';
                 });
             });
-
-            // Preencher data de emissão automaticamente
-            const dataEmissao = document.getElementById('data_emissao');
-            if (dataEmissao && !dataEmissao.value) {
-                const hoje = new Date();
-                const dia = hoje.getDate().toString().padStart(2, '0');
-                const mes = (hoje.getMonth() + 1).toString().padStart(2, '0');
-                const ano = hoje.getFullYear();
-                dataEmissao.value = `${dia}/${mes}/${ano}`;
-            }
             
             console.log(' Inicialização concluída!');
             console.log(' Funções disponíveis:', {

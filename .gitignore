@@ -27,6 +27,9 @@ backups/
 # Local secrets and configs
 ippel_secret.key
 config_local.py
+*.key
+*.pem
+*.crt
 
 # Local databases folder
 db/
@@ -36,12 +39,32 @@ db/
 *.db-shm
 *.db-wal
 *.sqlite
+ippel_system.db
+rnc.db
+rnc_system.db
 
 # Backups
 backup/
+backups/
 
 # Local data not meant for VCS
 ARQUIVOS PARA PUXAR INFORMAÇÕES PARA O PAINEL/
+
+# Data folders with sensitive information
+data/
+*.json
+!data/example_data.json
+
+# Temporary files
+temp/
+tmp/
+*.tmp
+
+# Development files
+.vscode/
+.idea/
+*.swp
+*.swo
 
 # Node
 node_modules/

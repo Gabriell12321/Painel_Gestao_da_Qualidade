@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relatório Pauta Reunião</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; padding: 15px; background: #fff; font-size: 11px; }
+        .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px; }
+        .header h1 { font-size: 16px; color: #333; margin-bottom: 3px; }
+        .header .period { font-size: 10px; color: #666; }
+        
+        .tipo-header { background: #1e40af; color: white; padding: 10px 15px; font-size: 14px; font-weight: bold; margin: 20px 0 10px 0; text-align: center; }
+        .tipo-header.ro { background: #7c3aed; }
+        .tipo-header.rnc { background: #1e40af; }
+        
+        .setor-section { margin-bottom: 20px; page-break-inside: avoid; }
+        .setor-title { background: #4a5568; color: white; padding: 6px 10px; font-size: 12px; font-weight: bold; margin-bottom: 8px; }
+        .sub-setor-title { background: #e2e8f0; color: #2d3748; padding: 4px 10px 4px 20px; font-size: 11px; font-weight: bold; margin: 10px 0 6px 0; border-left: 4px solid #4a5568; }
+        
+        .rnc-item { margin-bottom: 12px; border-left: 3px solid #4a5568; padding-left: 10px; }
+        .rnc-header { display: flex; justify-content: space-between; margin-bottom: 5px; }
+        .rnc-number { font-weight: bold; font-size: 11px; color: #2d3748; }
+        .rnc-date { color: #666; font-size: 10px; }
+        
+        .dados-section { margin-top: 5px; }
+        .dados-title { font-weight: bold; color: #4a5568; margin-bottom: 4px; font-size: 10px; text-transform: uppercase; }
+        .dados-item { margin-left: 15px; margin-bottom: 3px; font-size: 10px; line-height: 1.4; }
+        .dados-label { font-weight: 600; color: #2d3748; }
+        .dados-value { color: #4a5568; }
+        
+        .sub-item { margin-left: 30px; margin-bottom: 2px; font-size: 9px; }
+        
+        .resumo-box { margin-bottom: 24px; page-break-inside: avoid; }
+        .resumo-header { background: #2d3748; color: white; padding: 10px 15px; font-size: 14px; font-weight: bold; text-align: center; margin-bottom: 10px; }
+        .resumo-setor-bar { background: #4a5568; color: white; padding: 5px 10px; font-size: 11px; font-weight: bold; margin: 8px 0 4px 0; }
+        .resumo-sub-bar { background: #e2e8f0; color: #2d3748; padding: 3px 10px 3px 20px; font-size: 10px; font-weight: bold; margin: 4px 0 2px 0; border-left: 4px solid #4a5568; }
+        .resumo-client { font-size: 10px; color: #2d3748; padding: 1px 0 1px 28px; line-height: 1.5; }
+        .resumo-client-sub { font-size: 10px; color: #2d3748; padding: 1px 0 1px 40px; line-height: 1.5; }
+        
+        .back-button { background: #4a5568; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 11px; margin: 15px 5px 15px 0; }
+        .back-button:hover { background: #2d3748; }
+        
+        @media print {
+            .no-print { display: none !important; }
+            body { padding: 10px; font-size: 9px; }
+            .header h1 { font-size: 14px; }
+            .tipo-header { font-size: 12px; padding: 8px 10px; }
+            .setor-title { font-size: 11px; padding: 5px 8px; }
+            .sub-setor-title { font-size: 10px; padding: 3px 8px 3px 16px; }
+            .rnc-number { font-size: 10px; }
+            .dados-item { font-size: 9px; }
+            .sub-item { font-size: 8px; }
+            .resumo-header { font-size: 12px; padding: 8px 10px; }
+            .resumo-setor-bar { font-size: 10px; padding: 4px 8px; }
+            .resumo-sub-bar { font-size: 9px; padding: 2px 8px 2px 16px; }
+            .resumo-client { font-size: 9px; padding-left: 24px; }
+            .resumo-client-sub { font-size: 9px; padding-left: 34px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>RELATÓRIO PAUTA REUNIÃO</h1>
+        <div class="period">Período: {{ start_date }} a {{ end_date }}</div>
+        <div class="period" style="margin-top: 5px;">
+            {% if tipo_registro_filter == 'ro' %}
+                Tipo: Apenas R.O
+            {% elif tipo_registro_filter == 'rnc' %}
+                Tipo: Apenas RNC
+            {% elif tipo_registro_filter == 'garantias' %}
+                Tipo: Apenas Garantias
+            {% elif tipo_registro_filter == 'todos' %}
+                Tipo: Todos (R.O + RNC + Garantias)
+            {% else %}
+                Tipo: Ambos (R.O + RNC)
+            {% endif %}
+            {% if setor_filter and setor_filter != 'todos' %}
+                | Setor: {{ setor_filter }}
+            {% endif %}
+        </div>
+        <div class="period" style="margin-top: 5px; font-weight: bold;">Total de Registros: {{ rncs_list|length }}</div>
+    </div>
+    
+    {% set ro_por_setor = {} %}
+    {% set rnc_por_setor = {} %}
+    
+    {% for item in rncs_list %}
+        {% set setor_nome = item.setor_ordem or 'Não informado' %}
+        
+        {% if setor_nome in ['Terceiros', 'Compras'] %}
+            {% set setor_nome = 'Suprimentos' %}
+        {% elif setor_nome in ['Usinagem Plana', 'Usin. Cilíndrica CNC', 'Usin. Cilíndrica Convencional', 
+                                 'Balanceamento', 'Caldeiraria de Carbono', 'Caldeiraria de Inox', 
+                                 'Corte', 'Montagem', 'Pintura', 'Produção'] %}
+            {% set setor_nome = 'Produção' %}
+        {% elif setor_nome == 'Não Definidos' %}
+            {% set setor_nome = 'Não informado' %}
+        {% endif %}
+        
+        {% if item.tipo_registro == 'RO' %}
+            {% if setor_nome not in ro_por_setor %}
+                {% set _ = ro_por_setor.update({setor_nome: []}) %}
+            {% endif %}
+            {% set _ = ro_por_setor[setor_nome].append(item) %}
+        {% else %}
+            {% if setor_nome not in rnc_por_setor %}
+                {% set _ = rnc_por_setor.update({setor_nome: []}) %}
+            {% endif %}
+            {% set _ = rnc_por_setor[setor_nome].append(item) %}
+        {% endif %}
+    {% endfor %}
+    
+    {% set setores_ordem = ['Comercial', 'Suprimentos', 'PCP', 'Engenharia', 'Produção'] %}
+    
+    {# ========== RESUMO ========== #}
+    <div class="resumo-box">
+        <div class="resumo-header">RESUMO POR SETOR</div>
+        {% set resumo_idx = namespace(value=1) %}
+        {% for setor_nome in setores_ordem %}
+            {% set ro_count = (ro_por_setor[setor_nome]|length) if setor_nome in ro_por_setor else 0 %}
+            {% set rnc_count = (rnc_por_setor[setor_nome]|length) if setor_nome in rnc_por_setor else 0 %}
+            {% set total = ro_count + rnc_count %}
+            {% if total > 0 %}
+            <div class="resumo-setor-bar">{{ resumo_idx.value }}) {{ setor_nome }} - {{ total }}
+                {% if ro_count > 0 and rnc_count > 0 %}({{ ro_count }} R.O + {{ rnc_count }} RNC){% elif ro_count > 0 %}({{ ro_count }} R.O){% elif rnc_count > 0 %}({{ rnc_count }} RNC){% endif %}
+            </div>
+            {% if setor_nome in ['Produção', 'Suprimentos'] %}
+                {% set all_items = [] %}
+                {% if setor_nome in ro_por_setor %}{% set _ = all_items.extend(ro_por_setor[setor_nome]) %}{% endif %}
+                {% if setor_nome in rnc_por_setor %}{% set _ = all_items.extend(rnc_por_setor[setor_nome]) %}{% endif %}
+                {% set sub_idx = namespace(value=1) %}
+                {% for sub_setor, sub_items in all_items|groupby('setor_ordem') %}
+                    <div class="resumo-sub-bar">{{ resumo_idx.value }}.{{ sub_idx.value }}) {{ sub_setor }} - {{ sub_items|length }}</div>
+                    {% for cli, cli_items in sub_items|groupby('client') %}
+                        <div class="resumo-client-sub">• {{ cli or 'N/A' }} - {{ cli_items|length }}</div>
+                    {% endfor %}
+                    {% set sub_idx.value = sub_idx.value + 1 %}
+                {% endfor %}
+            {% else %}
+                {% set all_items = [] %}
+                {% if setor_nome in ro_por_setor %}{% set _ = all_items.extend(ro_por_setor[setor_nome]) %}{% endif %}
+                {% if setor_nome in rnc_por_setor %}{% set _ = all_items.extend(rnc_por_setor[setor_nome]) %}{% endif %}
+                {% for cli, cli_items in all_items|groupby('client') %}
+                    <div class="resumo-client">• {{ cli or 'N/A' }} - {{ cli_items|length }}</div>
+                {% endfor %}
+            {% endif %}
+            {% set resumo_idx.value = resumo_idx.value + 1 %}
+            {% endif %}
+        {% endfor %}
+        {# Setores fora da ordem fixa #}
+        {% set _seen = [] %}
+        {% for setor_nome in ro_por_setor.keys()|list + rnc_por_setor.keys()|list %}
+            {% if setor_nome not in setores_ordem and setor_nome not in _seen %}
+                {% set _ = _seen.append(setor_nome) %}
+                {% set ro_count = (ro_por_setor[setor_nome]|length) if setor_nome in ro_por_setor else 0 %}
+                {% set rnc_count = (rnc_por_setor[setor_nome]|length) if setor_nome in rnc_por_setor else 0 %}
+                {% set total = ro_count + rnc_count %}
+                {% if total > 0 %}
+                <div class="resumo-setor-bar">{{ resumo_idx.value }}) {{ setor_nome }} - {{ total }}
+                    {% if ro_count > 0 and rnc_count > 0 %}({{ ro_count }} R.O + {{ rnc_count }} RNC){% elif ro_count > 0 %}({{ ro_count }} R.O){% elif rnc_count > 0 %}({{ rnc_count }} RNC){% endif %}
+                </div>
+                {% set all_items = [] %}
+                {% if setor_nome in ro_por_setor %}{% set _ = all_items.extend(ro_por_setor[setor_nome]) %}{% endif %}
+                {% if setor_nome in rnc_por_setor %}{% set _ = all_items.extend(rnc_por_setor[setor_nome]) %}{% endif %}
+                {% for cli, cli_items in all_items|groupby('client') %}
+                    <div class="resumo-client">• {{ cli or 'N/A' }} - {{ cli_items|length }}</div>
+                {% endfor %}
+                {% set resumo_idx.value = resumo_idx.value + 1 %}
+                {% endif %}
+            {% endif %}
+        {% endfor %}
+    </div>
+    
+    {% macro render_item(item, tipo) %}
+    <div class="rnc-item">
+        <div class="rnc-header">
+            {% if tipo == 'ro' %}
+                <span class="rnc-number" style="color: #7c3aed;">R.O-{{ item.ro_number or item.numero }}</span>
+            {% elif tipo == 'garantia' %}
+                <span class="rnc-number" style="color: #8b1538;">Garantia - n°{{ (item.garantia_number or item.numero)|replace('GAR', '') }}</span>
+            {% else %}
+                <span class="rnc-number" style="color: #1e40af;">RNC-{{ item.rnc_number or item.numero }}</span>
+            {% endif %}
+            <span class="rnc-date">{{ item.created_at }}</span>
+        </div>
+        <div class="dados-section">
+            <div class="dados-title">Dados</div>
+            {% if item.criador_nome %}
+            <div class="dados-item">
+                <span class="dados-label">Criado por:</span>
+                <span class="dados-value">{{ item.criador_nome }}</span>
+            </div>
+            {% endif %}
+            {% if item.causador_nome %}
+            <div class="dados-item">
+                <span class="dados-label">Causador:</span>
+                <span class="dados-value">{{ item.causador_nome }}</span>
+            </div>
+            {% endif %}
+            {% if tipo == 'garantia' %}
+            <div class="dados-item">
+                <span class="dados-label">1) CV:</span>
+                <span class="dados-value">{{ item.cv or 'N/A' }}</span>
+            </div>
+            <div class="sub-item">
+                <span class="dados-label">1.1) Data Emissão CV:</span>
+                <span class="dados-value">{{ item.data_emissao_cv or 'N/A' }}</span>
+            </div>
+            {% endif %}
+            <div class="dados-item">
+                <span class="dados-label">{% if tipo == 'garantia' %}2{% else %}1{% endif %}) Cliente:</span>
+                <span class="dados-value">{{ item.client or 'N/A' }}</span>
+            </div>
+            <div class="sub-item">
+                <span class="dados-label">{% if tipo == 'garantia' %}2.1{% else %}1.1{% endif %}) Equipamento:</span>
+                <span class="dados-value">{{ item.equipment or 'N/A' }}</span>
+            </div>
+            {% if tipo == 'garantia' %}
+            <div class="sub-item">
+                <span class="dados-label">2.2) Quantidade:</span>
+                <span class="dados-value">{{ item.quantidade or 'N/A' }}</span>
+            </div>
+            <div class="sub-item">
+                <span class="dados-label">2.3) Item a ser Fornecido:</span>
+                <span class="dados-value">{{ item.item_fornecido or 'N/A' }}</span>
+            </div>
+            <div class="sub-item">
+                <span class="dados-label">2.4) Setor Causador:</span>
+                <span class="dados-value">{{ item.setor_causador or 'N/A' }}</span>
+            </div>
+            {% else %}
+            <div class="sub-item">
+                <span class="dados-label">1.2) Nº Desenho:</span>
+                <span class="dados-value">{{ item.numero_desenho or item.drawing_number or 'N/A' }}</span>
+            </div>
+            {% if item.conjunto %}
+            <div class="sub-item">
+                <span class="dados-label">1.3) Conjunto:</span>
+                <span class="dados-value">{{ item.conjunto }}</span>
+            </div>
+            {% endif %}
+            <div class="sub-item">
+                <span class="dados-label">1.4) Descrição Desenho:</span>
+                <span class="dados-value">{{ item.description_drawing or item.drawing or 'N/A' }}</span>
+            </div>
+            {% endif %}
+            <div class="sub-item">
+                <span class="dados-label">{% if tipo == 'garantia' %}3) Descrição / Observações:{% else %}1.4.1) Descrição da Não Conformidade:{% endif %}</span>
+                <span class="dados-value">{{ item.description or 'N/A' }}</span>
+            </div>
+            {% if tipo != 'garantia' and item.instruction_retrabalho %}
+            <div class="sub-item">
+                <span class="dados-label">1.5) Instrução para Retrabalho:</span>
+                <span class="dados-value">{{ item.instruction_retrabalho }}</span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endmacro %}
+    
+    {% macro render_sector_content(items, setor_idx, setor_nome, tipo) %}
+        {% if setor_nome in ['Produção', 'Suprimentos'] %}
+            {% set sub_index = namespace(value=1) %}
+            {% for sub_setor, sub_items in items|groupby('setor_ordem') %}
+                <div class="sub-setor-title">{{ setor_idx }}.{{ sub_index.value }}) {{ sub_setor }} - {{ sub_items|length }}</div>
+                {% for item in sub_items|sort(attribute='client') %}
+                    {{ render_item(item, tipo) }}
+                {% endfor %}
+                {% set sub_index.value = sub_index.value + 1 %}
+            {% endfor %}
+        {% else %}
+            {% for item in items|sort(attribute='client') %}
+                {{ render_item(item, tipo) }}
+            {% endfor %}
+        {% endif %}
+    {% endmacro %}
+    
+    {# ========== BLOCO R.O ========== #}
+    {% if tipo_registro_filter in ['ambos', 'ro', 'todos'] and ro_por_setor and ro_por_setor|length > 0 %}
+    <div class="tipo-header ro">R.O - REGISTROS DE OCORRÊNCIA</div>
+    
+    {% set setor_index = namespace(value=1) %}
+    {% for setor_nome in setores_ordem %}
+        {% if setor_nome in ro_por_setor %}
+            <div class="setor-section">
+                <div class="setor-title">{{ setor_index.value }}) {{ setor_nome }} - {{ ro_por_setor[setor_nome]|length }} (R.O)</div>
+                {{ render_sector_content(ro_por_setor[setor_nome], setor_index.value, setor_nome, 'ro') }}
+            </div>
+            {% set setor_index.value = setor_index.value + 1 %}
+        {% endif %}
+    {% endfor %}
+    
+    {% for setor_nome, items in ro_por_setor.items() %}
+        {% if setor_nome not in setores_ordem %}
+            <div class="setor-section">
+                <div class="setor-title">{{ setor_index.value }}) {{ setor_nome }} - {{ items|length }} (R.O)</div>
+                {{ render_sector_content(items, setor_index.value, setor_nome, 'ro') }}
+            </div>
+            {% set setor_index.value = setor_index.value + 1 %}
+        {% endif %}
+    {% endfor %}
+    {% endif %}
+    
+    {# ========== BLOCO RNC ========== #}
+    {% if tipo_registro_filter in ['ambos', 'rnc', 'todos'] and rnc_por_setor and rnc_por_setor|length > 0 %}
+    <div class="tipo-header rnc">RNC - REGISTROS DE NÃO CONFORMIDADE</div>
+    
+    {% set setor_index = namespace(value=1) %}
+    {% for setor_nome in setores_ordem %}
+        {% if setor_nome in rnc_por_setor %}
+            <div class="setor-section">
+                <div class="setor-title">{{ setor_index.value }}) {{ setor_nome }} - {{ rnc_por_setor[setor_nome]|length }} (RNC)</div>
+                {{ render_sector_content(rnc_por_setor[setor_nome], setor_index.value, setor_nome, 'rnc') }}
+            </div>
+            {% set setor_index.value = setor_index.value + 1 %}
+        {% endif %}
+    {% endfor %}
+    
+    {% for setor_nome, items in rnc_por_setor.items() %}
+        {% if setor_nome not in setores_ordem %}
+            <div class="setor-section">
+                <div class="setor-title">{{ setor_index.value }}) {{ setor_nome }} - {{ items|length }} (RNC)</div>
+                {{ render_sector_content(items, setor_index.value, setor_nome, 'rnc') }}
+            </div>
+            {% set setor_index.value = setor_index.value + 1 %}
+        {% endif %}
+    {% endfor %}
+    {% endif %}
+    
+    {# ========== BLOCO GARANTIAS ========== #}
+    {% if tipo_registro_filter in ['ambos', 'garantias', 'todos'] and garantias_por_setor and garantias_por_setor|length > 0 %}
+    <div class="tipo-header garantia" style="background-color: #8b1538;">GARANTIA - REGISTROS DE GARANTIA</div>
+    
+    {% set setor_index = namespace(value=1) %}
+    {% for setor_nome in setores_ordem %}
+        {% if setor_nome in garantias_por_setor %}
+            <div class="setor-section">
+                <div class="setor-title">{{ setor_index.value }}) {{ setor_nome }} - {{ garantias_por_setor[setor_nome]|length }} (Garantia)</div>
+                {{ render_sector_content(garantias_por_setor[setor_nome], setor_index.value, setor_nome, 'garantia') }}
+            </div>
+            {% set setor_index.value = setor_index.value + 1 %}
+        {% endif %}
+    {% endfor %}
+    
+    {% for setor_nome, items in garantias_por_setor.items() %}
+        {% if setor_nome not in setores_ordem %}
+            <div class="setor-section">
+                <div class="setor-title">{{ setor_index.value }}) {{ setor_nome }} - {{ items|length }} (Garantia)</div>
+                {{ render_sector_content(items, setor_index.value, setor_nome, 'garantia') }}
+            </div>
+            {% set setor_index.value = setor_index.value + 1 %}
+        {% endif %}
+    {% endfor %}
+    {% endif %}
+    
+    <button class="back-button no-print" onclick="window.location.href='/reports/menu'">Novo Relatório</button>
+    <button class="back-button no-print" onclick="window.print()">Imprimir</button>
+</body>
+</html>

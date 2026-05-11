@@ -5,33 +5,10 @@ import json
 from typing import Any, Optional
 
 # Try Redis; gracefully fall back to in-memory cache if unavailable
-try:
-    import redis  # type: ignore
-except Exception:  # redis not installed
-    redis = None  # type: ignore
-
+# DESABILITADO: Redis causando timeout na inicialização
+# Usando cache em memória apenas
 _redis_client = None
 _REDIS_PREFIX = os.getenv('REDIS_PREFIX', 'ippel:')
-
-if redis is not None:
-    try:
-        url = os.getenv('REDIS_URL')
-        if url:
-            _redis_client = redis.from_url(url, decode_responses=True)
-        else:
-            _redis_client = redis.Redis(
-                host=os.getenv('REDIS_HOST', '127.0.0.1'),
-                port=int(os.getenv('REDIS_PORT', '6379')),
-                db=int(os.getenv('REDIS_DB', '0')),
-                decode_responses=True,
-            )
-        # Sanity check connection
-        try:
-            _redis_client.ping()
-        except Exception:
-            _redis_client = None
-    except Exception:
-        _redis_client = None
 
 
 def _rkey(key: str) -> str:

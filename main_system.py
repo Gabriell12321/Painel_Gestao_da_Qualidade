@@ -28,14 +28,14 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from werkzeug.security import generate_password_hash, check_password_hash
-from security_enhancements import add_security_headers
+from services.security_enhancements import add_security_headers
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.secret_key = 'ippel_secret_key_2024'
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'ippel_secret_key_default_change_me')
 
 # Configurar Flask-SocketIO
 socketio = SocketIO(app, cors_allowed_origins="*", logger=True, engineio_logger=True)
@@ -469,44 +469,58 @@ class RNCSystem:
     def get_rnc_list(self, user_id: int = None, filters: dict = None) -> list:
         """Busca lista de RNCs considerando compartilhamentos (rnc_shares).
         Regras:
-        - Admin: vê todas
-        - Usuário comum: vê próprias, departamento e compartilhadas explicitamente
+        - Admin e Ronaldo (id=5): vê todas
+        - Gerentes/Subgerentes: vê todas do grupo
+        - Usuário comum: vê só onde ele é causador ou criador ou compartilhadas
         """
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Primeiro, obter informações do usuário para filtrar por departamento
-            user_department = None
+            # Buscar informações do usuário
             user_role = None
+            user_group_id = None
+            manager_ids = []
+            
             if user_id:
-                cursor.execute("SELECT department, role FROM users WHERE id = ?", (user_id,))
+                cursor.execute("SELECT role, group_id FROM users WHERE id = ?", (user_id,))
                 user_info = cursor.fetchone()
                 if user_info:
-                    user_department = user_info[0]
-                    user_role = user_info[1]
+                    user_role = user_info[0]
+                    user_group_id = user_info[1]
+                    
+                    # Buscar gerentes do grupo
+                    if user_group_id:
+                        cursor.execute("SELECT manager_user_id, sub_manager_user_id FROM groups WHERE id = ?", (user_group_id,))
+                        group_info = cursor.fetchone()
+                        if group_info:
+                            if group_info[0]:
+                                manager_ids.append(group_info[0])
+                            if group_info[1]:
+                                manager_ids.append(group_info[1])
             
-            # Query base - inclui compartilhamentos
+            # Query base
             query = """
                 SELECT DISTINCT r.id, r.rnc_number, r.title, r.status, r.priority,
-                                r.created_at, u.name as user_name, r.department
+                                r.created_at, u.name as user_name, r.area_responsavel as department
                 FROM rncs r
                 LEFT JOIN users u ON r.user_id = u.id
-                LEFT JOIN rnc_shares rs ON rs.rnc_id = r.id
                 WHERE r.is_deleted = 0
             """
             params = []
 
-            if user_id and user_role != 'admin':
-                # Mostrar RNCs criadas pelo usuário, do departamento ou compartilhadas
-                if user_department:
-                    query += " AND (r.user_id = ? OR r.department = ? OR rs.shared_with_user_id = ?)"
-                    params.extend([user_id, user_department, user_id])
+            # FILTRO DE PERMISSÕES
+            if user_id and user_role != 'admin' and user_id != 5:
+                if user_id in manager_ids:
+                    # Gerente/Subgerente - vê tudo do grupo
+                    query += " AND r.assigned_group_id = ?"
+                    params.append(user_group_id)
                 else:
-                    query += " AND (r.user_id = ? OR rs.shared_with_user_id = ?)"
-                    params.extend([user_id, user_id])
-            # Admin mantém visão total sem filtros extras
+                    # Usuário comum - vê só dele
+                    query += " AND (r.causador_user_id = ? OR r.user_id = ? OR EXISTS (SELECT 1 FROM rnc_shares rs WHERE rs.rnc_id = r.id AND rs.shared_with_user_id = ?))"
+                    params.extend([user_id, user_id, user_id])
             
+            # Filtros adicionais
             if filters:
                 if filters.get('status'):
                     query += " AND r.status = ?"
@@ -517,7 +531,7 @@ class RNCSystem:
                     params.append(filters['priority'])
                     
                 if filters.get('department'):
-                    query += " AND r.department = ?"
+                    query += " AND r.area_responsavel = ?"
                     params.append(filters['department'])
             
             query += " ORDER BY r.created_at DESC"
@@ -924,40 +938,57 @@ def create_rnc_from_form():
                     conn = rnc_system._get_conn()
                     cursor = conn.cursor()
                     total_shared = 0
+
+                    # Causador (se informado) + gerente + subgerente + Ronaldo (ID 5) + criador (já possui via user_id)
+                    causador_user_id = data.get('causador_user_id')
+                    try:
+                        if causador_user_id:
+                            causador_user_id = int(str(causador_user_id).strip())
+                        else:
+                            causador_user_id = None
+                    except ValueError:
+                        causador_user_id = None
+
+                    allowed_extra_users = set()
+                    if causador_user_id and causador_user_id != current_user.id:
+                        allowed_extra_users.add(causador_user_id)
+                    # Ronaldo (id fixo 5) – confirmar se existe no sistema
+                    allowed_extra_users.add(5)
+
                     for group_id in shared_group_ids:
                         if not group_id:
                             continue
                         if str(group_id).isdigit():
-                            cursor.execute("SELECT name FROM groups WHERE id = ?", (group_id,))
-                            g = cursor.fetchone()
-                            group_name = g[0] if g else None
-                        else:
-                            group_name = str(group_id)
-                        if str(group_id).isdigit():
-                            cursor.execute("SELECT id FROM users WHERE (group_id = ? OR department = ?) AND is_active = 1", (group_id, group_name))
-                        else:
-                            cursor.execute("SELECT id FROM users WHERE department = ? AND is_active = 1", (group_name,))
-                        user_rows = cursor.fetchall()
-                        for (uid,) in user_rows:
-                            if uid == current_user.id:
-                                continue
-                            # Retry simples em caso de database locked
-                            for attempt in range(5):
-                                try:
-                                    cursor.execute("""
-                                        INSERT OR IGNORE INTO rnc_shares (rnc_id, shared_by_user_id, shared_with_user_id, permission_level)
-                                        VALUES (?, ?, ?, 'view')
-                                    """, (rnc_id, current_user.id, uid))
-                                    total_shared += 1
-                                    break
-                                except sqlite3.OperationalError as ex:
-                                    if 'locked' in str(ex).lower() and attempt < 4:
-                                        time.sleep(0.3 * (attempt + 1))
-                                        continue
-                                    else:
-                                        raise
+                            cursor.execute("SELECT manager_user_id, sub_manager_user_id FROM groups WHERE id = ?", (group_id,))
+                            mg = cursor.fetchone()
+                            if mg:
+                                m_id, sm_id = mg
+                                if m_id and m_id != current_user.id:
+                                    allowed_extra_users.add(m_id)
+                                if sm_id and sm_id != current_user.id:
+                                    allowed_extra_users.add(sm_id)
+
+                    # Inserir compartilhamentos SOMENTE para usuários permitidos
+                    for uid in allowed_extra_users:
+                        if not uid or uid == current_user.id:
+                            continue
+                        for attempt in range(5):
+                            try:
+                                cursor.execute("""
+                                    INSERT OR IGNORE INTO rnc_shares (rnc_id, shared_by_user_id, shared_with_user_id, permission_level)
+                                    VALUES (?, ?, ?, 'view')
+                                """, (rnc_id, current_user.id, uid))
+                                total_shared += 1
+                                break
+                            except sqlite3.OperationalError as ex:
+                                if 'locked' in str(ex).lower() and attempt < 4:
+                                    time.sleep(0.3 * (attempt + 1))
+                                    continue
+                                else:
+                                    raise
+
                     conn.commit(); conn.close()
-                    logger.info(f"RNC {rnc_id} compartilhada com {total_shared} usuários (agrupamento misto) grupos={shared_group_ids} dept={department}")
+                    logger.info(f"RNC {rnc_id} compartilhada com {total_shared} usuários permitidos (causador/gestores/Ronaldo). groups={shared_group_ids} dept={department} causador={causador_user_id}")
             except Exception as e:
                 logger.error(f"Falha ao registrar compartilhamentos da RNC {rnc_id}: {e}")
             
@@ -1047,7 +1078,7 @@ def get_rnc_details_api(rnc_id):
 
 @app.route('/api/rnc/list')
 def get_rnc_list_api():
-    """API para listar RNCs do usuário"""
+    """API para listar RNCs do usuário com paginação eficiente"""
     try:
         if not current_user.is_authenticated:
             return jsonify({
@@ -1055,27 +1086,161 @@ def get_rnc_list_api():
                 'message': 'Usuário não autenticado'
             }), 401
         
-        # Verificar o parâmetro tab para filtrar por status
+        # Parâmetros de paginação
         tab = request.args.get('tab', 'active')
+        page = int(request.args.get('page', 1))
+        limit = int(request.args.get('limit', 30))
+        offset = (page - 1) * limit
         
-        # Configurar filtros baseados na aba
-        filters = {}
+        # Parâmetros de filtro
+        search = request.args.get('search', '').strip()
+        client = request.args.get('client', '').strip()
+        department = request.args.get('department', '').strip()
+        responsible = request.args.get('responsible', '').strip()
+        
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        # Buscar informações do usuário atual
+        cursor.execute('SELECT role, group_id FROM users WHERE id = ?', (current_user.id,))
+        user_info = cursor.fetchone()
+        user_role = user_info['role'] if user_info else None
+        user_group_id = user_info['group_id'] if user_info else None
+        
+        # Buscar gerentes e subgerentes do grupo do usuário
+        manager_ids = []
+        if user_group_id:
+            cursor.execute('SELECT manager_user_id, sub_manager_user_id FROM groups WHERE id = ?', (user_group_id,))
+            group_info = cursor.fetchone()
+            if group_info:
+                if group_info['manager_user_id']:
+                    manager_ids.append(group_info['manager_user_id'])
+                if group_info['sub_manager_user_id']:
+                    manager_ids.append(group_info['sub_manager_user_id'])
+        
+        # Base query otimizada com índices
+        base_where = ["r.is_deleted = 0"]
+        params = []
+        
+        # Filtro por aba
         if tab == 'finalized':
-            filters['status'] = 'finalizado'
-        elif tab == 'active':
-            # Para aba "active", filtrar por status não finalizado
-            # Buscar todas e filtrar no código (ou ajustar query depois)
-            pass
-            
-        rncs = rnc_system.get_rnc_list(user_id=current_user.id, filters=filters)
+            base_where.append("r.status = 'Finalizado'")
+        else:  # active
+            base_where.append("r.status != 'Finalizado'")
         
-        # Se tab = 'active', filtrar apenas os não finalizados
-        if tab == 'active':
-            rncs = [rnc for rnc in rncs if rnc['status'] != 'finalizado']
+        # FILTRO DE PERMISSÕES
+        # Admin vê tudo, Ronaldo (id=5) vê tudo
+        logger.info(f"[FILTRO] User ID: {current_user.id}, Role: {user_role}, Group: {user_group_id}, Managers: {manager_ids}")
+        
+        if user_role != 'admin' and current_user.id != 5:
+            # Usuários comuns vêem apenas:
+            # 1. RNCs compartilhadas com ele (rnc_shares)
+            # 2. RNCs onde ele é o causador (causador_user_id)
+            # Gerentes/subgerentes vêem tudo do grupo
+            if current_user.id in manager_ids:
+                # É gerente ou subgerente - vê tudo do grupo
+                logger.info(f"[FILTRO] Usuário é GERENTE/SUBGERENTE - vendo tudo do grupo {user_group_id}")
+                base_where.append("r.assigned_group_id = ?")
+                params.append(user_group_id)
+            else:
+                # Usuário comum - vê só as dele
+                logger.info(f"[FILTRO] Usuário COMUM - vendo só suas RNCs (causador={current_user.id})")
+                base_where.append("(r.causador_user_id = ? OR r.user_id = ? OR EXISTS (SELECT 1 FROM rnc_shares rs WHERE rs.rnc_id = r.id AND rs.shared_with_user_id = ?))")
+                params.extend([current_user.id, current_user.id, current_user.id])
+        else:
+            logger.info(f"[FILTRO] Admin ou Ronaldo - vendo TODAS as RNCs")
+        
+        # Filtros adicionais
+        if search:
+            base_where.append("(r.rnc_number LIKE ? OR r.title LIKE ? OR r.description LIKE ?)")
+            search_param = f'%{search}%'
+            params.extend([search_param, search_param, search_param])
+        
+        if client:
+            base_where.append("r.client = ?")
+            params.append(client)
+        
+        if department:
+            base_where.append("r.area_responsavel = ?")
+            params.append(department)
+        
+        if responsible:
+            base_where.append("r.responsavel = ?")
+            params.append(responsible)
+        
+        where_clause = " AND ".join(base_where)
+        
+        # Log da query para debug
+        logger.info(f"[QUERY] WHERE: {where_clause}")
+        logger.info(f"[QUERY] PARAMS: {params}")
+        
+        # Contar total (com cache para performance)
+        count_query = f"SELECT COUNT(*) as total FROM rncs r WHERE {where_clause}"
+        cursor.execute(count_query, params)
+        total = cursor.fetchone()['total']
+        
+        # Query principal com LIMIT e OFFSET
+        query = f"""
+            SELECT 
+                r.id, r.rnc_number, r.title, r.description, r.status, r.priority,
+                r.client, r.equipment, r.drawing, r.revision, r.conjunto,
+                r.description_drawing, r.position, r.modelo, r.material, r.quantity,
+                r.cv, r.mp, r.price, r.area_responsavel, r.responsavel,
+                r.inspetor, r.created_at, r.finalized_at, r.updated_at,
+                u.name as user_name
+            FROM rncs r
+            LEFT JOIN users u ON r.user_id = u.id
+            WHERE {where_clause}
+            ORDER BY r.created_at DESC
+            LIMIT ? OFFSET ?
+        """
+        
+        params.extend([limit, offset])
+        cursor.execute(query, params)
+        
+        rncs = []
+        for row in cursor.fetchall():
+            rncs.append({
+                'id': row['id'],
+                'rnc_number': row['rnc_number'],
+                'title': row['title'],
+                'description': row['description'],
+                'status': row['status'],
+                'priority': row['priority'],
+                'client': row['client'],
+                'equipment': row['equipment'],
+                'drawing': row['drawing'],
+                'revision': row['revision'],
+                'conjunto': row['conjunto'],
+                'description_drawing': row['description_drawing'],
+                'position': row['position'],
+                'modelo': row['modelo'],
+                'material': row['material'],
+                'quantity': row['quantity'],
+                'cv': row['cv'],
+                'mp': row['mp'],
+                'price': row['price'],
+                'area_responsavel': row['area_responsavel'],
+                'responsavel': row['responsavel'],
+                'inspetor': row['inspetor'],
+                'created_at': row['created_at'],
+                'finalized_at': row['finalized_at'],
+                'updated_at': row['updated_at'],
+                'user_name': row['user_name']
+            })
+        
+        conn.close()
         
         return jsonify({
             'success': True,
-            'rncs': rncs
+            'rncs': rncs,
+            'pagination': {
+                'page': page,
+                'limit': limit,
+                'total': total,
+                'pages': (total + limit - 1) // limit
+            }
         })
         
     except Exception as e:
@@ -1358,29 +1523,34 @@ def api_get_groups():
 
 @app.route('/api/groups', methods=['GET'])
 def api_get_groups_simple():
-    """Endpoint simplificado para listar grupos"""
+    """Endpoint simplificado para listar setores das RNCs"""
     try:
         if not current_user.is_authenticated:
             return jsonify({'success': False, 'message': 'Usuário não autenticado'}), 401
 
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute("SELECT id, name, description FROM groups ORDER BY name")
+        
+        # Buscar setores únicos das RNCs (setor e area_responsavel)
+        cursor.execute("""
+            SELECT DISTINCT setor FROM rncs 
+            WHERE setor IS NOT NULL AND setor != '' AND is_deleted = 0
+            UNION
+            SELECT DISTINCT area_responsavel FROM rncs 
+            WHERE area_responsavel IS NOT NULL 
+            AND area_responsavel != '' 
+            AND is_deleted = 0
+            AND CAST(area_responsavel AS TEXT) NOT GLOB '[0-9]*'
+            ORDER BY 1
+        """)
         rows = cursor.fetchall()
         conn.close()
 
-        groups_list = [
-            {
-                'id': row[0],
-                'name': row[1],
-                'description': row[2] or ''
-            }
-            for row in rows
-        ]
+        groups_list = [{'name': row[0]} for row in rows if row[0]]
 
         return jsonify(groups_list)  # Retorna array diretamente para compatibilidade com frontend
     except Exception as e:
-        logger.error(f"Erro ao listar grupos: {e}")
+        logger.error(f"Erro ao listar setores: {e}")
         return jsonify({'success': False, 'message': 'Erro interno do sistema'}), 500
 
 
@@ -2516,6 +2686,111 @@ def delete_chat_message(rnc_id, message_id):
     except Exception as e:
         logger.error(f"Erro ao deletar mensagem {message_id} do chat da RNC {rnc_id}: {e}")
         return jsonify({'success': False, 'message': 'Erro interno do sistema'}), 500
+
+@app.route('/form_ata')
+@login_required
+def form_ata():
+    """Página de criação de ata de reunião"""
+    return render_template('form_ata.html')
+
+@app.route('/api/ata/create', methods=['POST'])
+@login_required
+def create_ata():
+    """API para criar nova ata de reunião"""
+    try:
+        data = request.get_json()
+        
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Criar tabela se não existir
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS atas_reuniao (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                numero TEXT NOT NULL,
+                data_reuniao TEXT NOT NULL,
+                local TEXT,
+                assunto TEXT NOT NULL,
+                participantes TEXT,
+                conteudo TEXT NOT NULL,
+                decisoes TEXT,
+                responsaveis TEXT,
+                prazo TEXT,
+                created_by INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                status TEXT DEFAULT 'ativa',
+                FOREIGN KEY (created_by) REFERENCES users(id)
+            )
+        """)
+        
+        # Inserir ata
+        cursor.execute("""
+            INSERT INTO atas_reuniao 
+            (numero, data_reuniao, local, assunto, participantes, conteudo, 
+             decisoes, responsaveis, prazo, created_by, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ativa')
+        """, (
+            data.get('numero'),
+            data.get('data_reuniao'),
+            data.get('local'),
+            data.get('assunto'),
+            data.get('participantes'),
+            data.get('conteudo'),
+            data.get('decisoes'),
+            data.get('responsaveis'),
+            data.get('prazo'),
+            current_user.id
+        ))
+        
+        ata_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Ata criada com sucesso',
+            'ata_id': ata_id
+        })
+        
+    except Exception as e:
+        logger.error(f"Erro ao criar ata: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/atas/list')
+@login_required
+def list_atas():
+    """API para listar atas de reunião"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT a.id, a.numero, a.data_reuniao, a.assunto, a.status,
+                   a.created_at, u.name as criador
+            FROM atas_reuniao a
+            LEFT JOIN users u ON a.created_by = u.id
+            ORDER BY a.data_reuniao DESC, a.created_at DESC
+        """)
+        
+        atas = []
+        for row in cursor.fetchall():
+            atas.append({
+                'id': row[0],
+                'numero': row[1],
+                'data_reuniao': row[2],
+                'assunto': row[3],
+                'status': row[4],
+                'created_at': row[5],
+                'criador': row[6]
+            })
+        
+        conn.close()
+        return jsonify({'success': True, 'atas': atas})
+        
+    except Exception as e:
+        logger.error(f"Erro ao listar atas: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 if __name__ == '__main__':
     # Inicializar banco de dados

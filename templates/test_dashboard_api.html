@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Teste Dashboard API</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #f5f5f5; }
+        .test { margin: 15px 0; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #dc3545; }
+        .success { border-left-color: #28a745; }
+        .error { border-left-color: #dc3545; color: #dc3545; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto; }
+        button { padding: 10px 20px; background: #dc3545; color: white; border: none; border-radius: 6px; cursor: pointer; margin: 5px; }
+        button:hover { background: #b21f35; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Teste de APIs do Dashboard IPPEL</h1>
+    <p>Este teste verifica se as APIs estão respondendo corretamente.</p>
+    
+    <button onclick="testarTudo()">▶️ Executar Todos os Testes</button>
+    <button onclick="location.reload()">🔄 Limpar</button>
+    
+    <div id="resultados"></div>
+    
+    <script>
+        const BASE_URL = window.location.origin;
+        
+        function addResult(title, status, data) {
+            const div = document.createElement('div');
+            div.className = `test ${status}`;
+            div.innerHTML = `
+                <h3>${title}</h3>
+                <p><strong>Status:</strong> ${status === 'success' ? '✅ Sucesso' : '❌ Erro'}</p>
+                <pre>${JSON.stringify(data, null, 2)}</pre>
+            `;
+            document.getElementById('resultados').appendChild(div);
+        }
+        
+        async function testarUserInfo() {
+            try {
+                console.log('Testando /api/user/info...');
+                const response = await fetch(`${BASE_URL}/api/user/info`, { credentials: 'include' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    addResult('1️⃣ API /api/user/info', 'success', {
+                        usuario: data.user.name,
+                        departamento: data.user.department,
+                        role: data.user.role
+                    });
+                } else {
+                    addResult('1️⃣ API /api/user/info', 'error', data);
+                }
+            } catch (error) {
+                addResult('1️⃣ API /api/user/info', 'error', { erro: error.message });
+            }
+        }
+        
+        async function testarRNCList() {
+            try {
+                console.log('Testando /api/rnc/list...');
+                const response = await fetch(`${BASE_URL}/api/rnc/list?tab=active&limit=5`, { credentials: 'include' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    addResult('2️⃣ API /api/rnc/list (active)', 'success', {
+                        total_rncs: data.rncs.length,
+                        has_more: data.has_more,
+                        amostra: data.rncs[0] ? {
+                            id: data.rncs[0].id,
+                            numero: data.rncs[0].rnc_number,
+                            titulo: data.rncs[0].title,
+                            status: data.rncs[0].status
+                        } : 'Nenhuma RNC'
+                    });
+                } else {
+                    addResult('2️⃣ API /api/rnc/list (active)', 'error', data);
+                }
+            } catch (error) {
+                addResult('2️⃣ API /api/rnc/list (active)', 'error', { erro: error.message });
+            }
+        }
+        
+        async function testarRNCFinalized() {
+            try {
+                console.log('Testando /api/rnc/list finalizadas...');
+                const response = await fetch(`${BASE_URL}/api/rnc/list?tab=finalized&limit=5`, { credentials: 'include' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    addResult('3️⃣ API /api/rnc/list (finalized)', 'success', {
+                        total_rncs: data.rncs.length,
+                        has_more: data.has_more,
+                        amostra: data.rncs[0] ? {
+                            id: data.rncs[0].id,
+                            numero: data.rncs[0].rnc_number,
+                            titulo: data.rncs[0].title,
+                            status: data.rncs[0].status,
+                            finalizado_em: data.rncs[0].finalized_at
+                        } : 'Nenhuma RNC'
+                    });
+                } else {
+                    addResult('3️⃣ API /api/rnc/list (finalized)', 'error', data);
+                }
+            } catch (error) {
+                addResult('3️⃣ API /api/rnc/list (finalized)', 'error', { erro: error.message });
+            }
+        }
+        
+        async function testarTudo() {
+            document.getElementById('resultados').innerHTML = '<p>⏳ Executando testes...</p>';
+            
+            await testarUserInfo();
+            await testarRNCList();
+            await testarRNCFinalized();
+            
+            console.log('Todos os testes concluídos!');
+        }
+        
+        // Executar automaticamente ao carregar
+        window.addEventListener('DOMContentLoaded', () => {
+            setTimeout(testarTudo, 500);
+        });
+    </script>
+</body>
+</html>

@@ -84,7 +84,8 @@ class PersistentNotificationService:
             if result and result[0] and result[0] != created_by_user_id:
                 target_users.add(result[0])
             
-            # 2. Buscar usuários com quem a RNC foi compartilhada
+            # 2. Buscar SOMENTE usuários com quem a RNC foi compartilhada explicitamente
+            # (causador, gerente, subgerente - definidos em main_system.py)
             cursor.execute("""
                 SELECT shared_with_user_id 
                 FROM rnc_shares 
@@ -95,26 +96,8 @@ class PersistentNotificationService:
                 if row[0]:
                     target_users.add(row[0])
             
-            # 3. Buscar usuários do mesmo grupo (se existir sistema de grupos)
-            cursor.execute("""
-                SELECT g.id as group_id
-                FROM groups g
-                INNER JOIN group_members gm1 ON g.id = gm1.group_id
-                WHERE gm1.user_id = ?
-            """, (created_by_user_id,))
-            
-            user_groups = [row[0] for row in cursor.fetchall()]
-            
-            for group_id in user_groups:
-                cursor.execute("""
-                    SELECT user_id 
-                    FROM group_members 
-                    WHERE group_id = ? AND user_id != ?
-                """, (group_id, created_by_user_id))
-                
-                for row in cursor.fetchall():
-                    if row[0]:
-                        target_users.add(row[0])
+            # REMOVIDO: Não notificar todos os membros do grupo
+            # Apenas usuários explicitamente compartilhados recebem notificação
             
             return list(target_users)
             

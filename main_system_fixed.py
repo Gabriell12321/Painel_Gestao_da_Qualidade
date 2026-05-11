@@ -25,7 +25,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.secret_key = 'ippel_secret_key_2024'
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'ippel_secret_key_default_change_me')
 
 # Configurar Flask-Login
 login_manager = LoginManager()

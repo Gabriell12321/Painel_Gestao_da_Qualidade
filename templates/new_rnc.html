@@ -1497,8 +1497,8 @@
         <div class="header">
             <div class="logos" style="display:flex; gap:12px; align-items:center;">
                 <img src="{{ url_for('static', filename='LOGOSQI.jpg') }}" alt="SQI Logo" style="width: 120px; height: 120px; object-fit: contain; background: transparent; padding: 0; border: none;">
-                <img src="/IPPELLOGO.jpg" alt="IPPEL Logo" class="apply-logo" style="width: 120px; height: 120px; object-fit: contain; background: transparent; padding: 0; border: none;"
-                     data-logo-primary="/IPPELLOGO.jpg"
+                <img src="{{ url_for('static', filename='IPPELLOGO.jpg') }}" alt="IPPEL Logo" class="apply-logo" style="width: 120px; height: 120px; object-fit: contain; background: transparent; padding: 0; border: none;"
+                     data-logo-primary="{{ url_for('static', filename='IPPELLOGO.jpg') }}"
                      data-logo-fallback1="/IPPELLOGO.jpg"
                      data-logo-fallback2="{{ url_for('static', filename='LOGOSQI.jpg') }}"
                      onerror="if(this.dataset.try1!=='1'){this.dataset.try1='1'; this.src=this.dataset.logoFallback1;} else if(this.dataset.try2!=='1'){this.dataset.try2='1'; this.src=this.dataset.logoFallback2;} else {this.style.display='none';}">
@@ -1550,12 +1550,13 @@
 
             <!-- Conteúdo -->
             <div style="padding: 20px; background: white;">
-                <!-- Linha 1: CLIENTES | NUMERO DE DESENHO | REVISÃO -->
+                <!-- Linha 1: CLIENTES | NUMERO DE DESENHO | REVISÃO | DATA -->
                 <table style="margin-bottom: 0;">
                     <tr>
-                        <td class="field-label" style="width: 33.33%;">CLIENTES</td>
-                        <td class="field-label" style="width: 33.33%;">NUMERO DE DESENHO</td>
-                        <td class="field-label" style="width: 33.33%;">REVISÃO</td>
+                        <td class="field-label" style="width: 25%;">CLIENTES</td>
+                        <td class="field-label" style="width: 25%;">NUMERO DE DESENHO</td>
+                        <td class="field-label" style="width: 25%;">REVISÃO</td>
+                        <td class="field-label" style="width: 25%;">DATA</td>
                     </tr>
                     <tr>
                         <td>
@@ -1568,6 +1569,7 @@
                         </td>
                         <td><input type="text" name="drawing" class="input-field" placeholder="Número do Desenho" data-field="drawing"></td>
                         <td><input type="text" name="revision" class="input-field" placeholder="Revisão" data-field="revision"></td>
+                        <td><input type="text" id="data_emissao" name="data_emissao" class="input-field" data-field="created_at"></td>
                     </tr>
                 </table>
 
@@ -1682,12 +1684,12 @@
 
             <!-- Conteúdo -->
             <div style="padding: 20px; background: white;">
-                <!-- Linha 1: Setor responsável | Assinatura responsável | Data -->
+                <!-- Linha 1: Setor responsável | Assinatura responsável | Nome causador -->
                 <table style="margin-bottom: 0;">
                     <tr>
                         <td class="field-label" style="width: 33.33%;">SETOR RESPONSÁVEL</td>
                         <td class="field-label" style="width: 33.33%;">ASSINATURA RESPONSÁVEL</td>
-                        <td class="field-label" style="width: 33.33%;">DATA</td>
+                        <td class="field-label" style="width: 33.33%;">NOME CAUSADOR</td>
                     </tr>
                     <tr>
                         <td>
@@ -1698,27 +1700,16 @@
                             <input type="hidden" id="assigned_group_id" name="assigned_group_id" value="">
                         </td>
                         <td><input type="text" id="ass_responsavel" name="ass_responsavel" class="input-field" placeholder="Assinatura Responsável" data-field="ass_responsavel"></td>
-                        <td><input type="text" id="data_emissao" name="data_emissao" class="input-field" data-field="created_at"></td>
-                    </tr>
-                </table>
-
-                <!-- Linha 2: Inspetor | Nome causador | Assinatura Causador -->
-                <table style="margin-bottom: 0;">
-                    <tr>
-                        <td class="field-label" style="width: 33.33%;">INSPETOR</td>
-                        <td class="field-label" style="width: 33.33%;">NOME CAUSADOR</td>
-                        <td class="field-label" style="width: 33.33%;">ASSINATURA CAUSADOR</td>
-                    </tr>
-                    <tr>
-                        <td><input type="text" name="inspetor" class="input-field" placeholder="Inspetor" data-field="inspetor"></td>
                         <td>
                             <select id="nome_responsavel" name="nome_responsavel" class="input-field" data-field="responsavel" onchange="onNomeResponsavelChange()" style="padding: 10px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 14px; width: 100%; background: white; cursor: pointer; transition: all 0.2s;">
                                 <option value="">Selecione o Usuário Causador</option>
                             </select>
                         </td>
-                        <td><input type="text" name="assinatura_lider" id="assinatura_lider" class="input-field" placeholder="Digite a assinatura manualmente" data-field="signature_inspection2_name"></td>
                     </tr>
                 </table>
+                <!-- Campos ocultos para manter compatibilidade -->
+                <input type="hidden" name="inspetor" data-field="inspetor" value="">
+                <input type="hidden" name="assinatura_lider" id="assinatura_lider" data-field="signature_inspection2_name" value="">
             </div>
         </div>
 
@@ -1911,9 +1902,9 @@
                     <div id="nome_coluna1" style="margin-bottom: 20px; min-height: 18px;">NOME</div>
                     <div style="border-top: 1px solid #333; padding-top: 6px; font-size: 9px; color: #555;">VISTO - Qualidade</div>
                 </div>
-                <div id="assinatura_coluna2" style="width: 33.33%; padding: 12px; text-align: center; font-size: 10px; font-weight: 600; cursor: not-allowed; border-right: 1px solid #000; background: #f8f9fa; opacity: 0.7;" title="Este campo deve ser preenchido APENAS PELO GERENTE do setor, clicando aqui manualmente">
+                <div id="assinatura_coluna2" style="width: 33.33%; padding: 12px; text-align: center; font-size: 10px; font-weight: 600; border-right: 1px solid #000; background: #f8f9fa;">
                     <div id="nome_coluna2" style="margin-bottom: 20px; min-height: 18px; color: #6c757d;">NOME</div>
-                    <div style="border-top: 1px solid #333; padding-top: 6px; font-size: 9px; color: #555;">VISTO - Gerente do Setor ⚠️ MANUAL</div>
+                    <div style="border-top: 1px solid #333; padding-top: 6px; font-size: 9px; color: #555;">VISTO - Gerente do Setor</div>
                 </div>
                 <div id="assinatura_coluna3" style="width: 33.33%; padding: 12px; text-align: center; font-size: 10px; font-weight: 600; cursor: pointer;" onclick="preencherAssinatura(this)">
                     <div id="nome_coluna3" style="margin-bottom: 20px; min-height: 18px;">NOME</div>
@@ -2375,21 +2366,17 @@
         window.criarRNC = function() {
             console.log(' Função criarRNC chamada!');
             
-                // Validação do campo CV: mínimo 11 dígitos
+                // Validação do campo CV: mínimo 6 caracteres (números ou letras)
                 const cvInput = document.querySelector('[data-field="cv"]');
                 if (cvInput) {
-                    const cvValue = cvInput.value.replace(/\D/g, ''); // Remove não dígitos
-                    if (cvValue.length < 11) {
-                        mostrarNotificacao(' O campo CV deve conter pelo menos 11 dígitos!', 'error');
+                    const cvValue = cvInput.value.replace(/[^a-zA-Z0-9]/g, ''); // Remove caracteres especiais
+                    if (cvValue.length < 6) {
+                        mostrarNotificacao(' O campo CV deve conter pelo menos 6 caracteres!', 'error');
                         cvInput.focus();
                         return;
                     }
                 }
-            // Verificar se há pelo menos uma assinatura
-            if (!verificarAssinaturas()) {
-                mostrarNotificacao(' É obrigatório preencher pelo menos uma assinatura!', 'error');
-                return;
-            }
+            // Assinaturas não são mais obrigatórias (VISTO - Gerente do Setor é preenchido automaticamente ao selecionar o setor)
 
             // Verificar campos bloqueados
             const formData = {};
@@ -2664,6 +2651,12 @@
             const selectedOption = selectElement.options[selectElement.selectedIndex];
             const groupName = selectedOption.dataset.groupName || selectedOption.textContent;
             
+            // Setores que NÃO devem ter assinatura auto-preenchida
+            const SETORES_SEM_AUTO_ASSINATURA = [
+                'engenharia', 'comercial', 'pcp', 'qualidade', 'compras', 'expedição', 'expedicao'
+            ];
+            const setorExcluido = SETORES_SEM_AUTO_ASSINATURA.includes(groupName.trim().toLowerCase());
+            
             // Mostrar indicador de carregamento
             mostrarNotificacao(` Carregando informações do setor "${groupName}"...`, 'info');
             
@@ -2682,7 +2675,7 @@
                         const selectedGroup = groupsData.groups.find(g => g.id == selectedAreaGroupId);
                         
                         if (selectedGroup && selectedGroup.manager_name) {
-                            // Preencher o responsável em "Assinatura Responsável" com o gerente principal
+                            // Preencher o responsável em "Assinatura Responsável" com o gerente principal (TODOS os setores)
                             if (assResponsavelInput) {
                                 assResponsavelInput.value = selectedGroup.manager_name;
                                 console.log(` ✓ Assinatura Responsável preenchida com gerente: ${selectedGroup.manager_name}`);
@@ -2702,23 +2695,37 @@
                             console.log(` ✓ Data de emissão preenchida: ${dataAtual}`);
                         }
                         
-                        // GARANTIR que o campo "VISTO - Gerente do Setor" (nome_coluna2) permaneça VAZIO
-                        // Este campo deve ser preenchido MANUALMENTE pelo gerente, não automaticamente
+                        // Preencher automaticamente o VISTO - Gerente do Setor com o nome do gerente
+                        // (somente para setores que NÃO estão na lista de exclusão)
                         const nomeColuna2 = document.getElementById('nome_coluna2');
-                        if (nomeColuna2) {
+                        if (nomeColuna2 && selectedGroup && selectedGroup.manager_name && !setorExcluido) {
+                            nomeColuna2.textContent = selectedGroup.manager_name;
+                            console.log(` ✓ VISTO - Gerente do Setor preenchido: ${selectedGroup.manager_name}`);
+                            
+                            // Preencher a data correspondente
+                            const engD = document.getElementById('eng_d');
+                            const engM = document.getElementById('eng_m');
+                            const engY = document.getElementById('eng_y');
+                            if (engD && engM && engY) {
+                                const hoje = new Date();
+                                engD.value = String(hoje.getDate()).padStart(2, '0');
+                                engM.value = String(hoje.getMonth() + 1).padStart(2, '0');
+                                engY.value = String(hoje.getFullYear());
+                            }
+                        } else if (nomeColuna2) {
                             nomeColuna2.textContent = 'NOME';
-                            console.log(` ℹ️ Campo "VISTO - Gerente do Setor" mantido vazio (preenchimento manual obrigatório)`);
-                        }
-                        
-                        // Limpar também a data correspondente ao VISTO - Gerente do Setor
-                        const engD = document.getElementById('eng_d');
-                        const engM = document.getElementById('eng_m');
-                        const engY = document.getElementById('eng_y');
-                        if (engD && engM && engY) {
-                            engD.value = '';
-                            engM.value = '';
-                            engY.value = '';
-                            console.log(` ℹ️ Data do "VISTO - Gerente do Setor" limpa (será preenchida manualmente)`);
+                            // Limpar data do gerente
+                            const engD = document.getElementById('eng_d');
+                            const engM = document.getElementById('eng_m');
+                            const engY = document.getElementById('eng_y');
+                            if (engD && engM && engY) {
+                                engD.value = '';
+                                engM.value = '';
+                                engY.value = '';
+                            }
+                            if (setorExcluido) {
+                                console.log(` ℹ️ VISTO - Gerente do Setor NÃO preenchido (setor "${groupName}" excluído)`);
+                            }
                         }
                         
                         // NÃO preencher "Assinatura Causador" - deve ficar em branco até o usuário selecionar no dropdown
@@ -2864,13 +2871,52 @@
 
         // Função chamada quando o usuário seleciona um Nome Causador
         function onNomeResponsavelChange() {
-            // ATENÇÃO: Esta função NÃO deve preencher automaticamente o campo "Assinatura Causador"
-            // O campo deve permanecer SEMPRE vazio para preenchimento manual
-            console.log(' [onNomeResponsavelChange] Usuário selecionado no dropdown');
-            console.log(' Campo "Assinatura Causador" permanece vazio (não é preenchido automaticamente)');
+            const select = document.getElementById('nome_responsavel');
+            if (!select) return;
+            const selectedOption = select.options[select.selectedIndex];
+            const causadorName = selectedOption ? selectedOption.textContent : '';
+            const nomeColuna3 = document.getElementById('nome_coluna3');
             
-            // Nenhuma ação é tomada - o campo permanece vazio
-            // O usuário deve preencher manualmente se desejar
+            // Verificar se o setor selecionado está na lista de exclusão
+            const areaSelect = document.getElementById('area_responsavel_select');
+            const SETORES_SEM_AUTO_ASSINATURA = [
+                'engenharia', 'comercial', 'pcp', 'qualidade', 'compras', 'expedição', 'expedicao'
+            ];
+            let setorExcluido = false;
+            if (areaSelect && areaSelect.value) {
+                const nomeSetor = areaSelect.options[areaSelect.selectedIndex]?.textContent || '';
+                setorExcluido = SETORES_SEM_AUTO_ASSINATURA.includes(nomeSetor.trim().toLowerCase());
+            }
+            
+            if (nomeColuna3) {
+                if (select.value && causadorName && !setorExcluido) {
+                    nomeColuna3.textContent = causadorName;
+                    const hoje = new Date();
+                    const insp2D = document.getElementById('insp2_d');
+                    const insp2M = document.getElementById('insp2_m');
+                    const insp2Y = document.getElementById('insp2_y');
+                    if (insp2D && insp2M && insp2Y) {
+                        insp2D.value = String(hoje.getDate()).padStart(2, '0');
+                        insp2M.value = String(hoje.getMonth() + 1).padStart(2, '0');
+                        insp2Y.value = String(hoje.getFullYear());
+                    }
+                    console.log(` ✓ VISTO - Causador preenchido: ${causadorName}`);
+                } else {
+                    nomeColuna3.textContent = 'NOME';
+                    // Limpar data do causador
+                    const insp2D = document.getElementById('insp2_d');
+                    const insp2M = document.getElementById('insp2_m');
+                    const insp2Y = document.getElementById('insp2_y');
+                    if (insp2D && insp2M && insp2Y) {
+                        insp2D.value = '';
+                        insp2M.value = '';
+                        insp2Y.value = '';
+                    }
+                    if (setorExcluido) {
+                        console.log(` ℹ️ VISTO - Causador NÃO preenchido (setor excluído do auto-preenchimento)`);
+                    }
+                }
+            }
         }
 
         // FUNÇÕES DE ATRIBUIÇÃO MÚLTIPLA DE USUÁRIOS
@@ -3134,23 +3180,10 @@
         document.addEventListener('DOMContentLoaded', function() {
             console.log(' Página carregada, iniciando carregamentos...');
             
-            // GARANTIR que o campo "VISTO - Gerente do Setor" SEMPRE comece vazio
-            // Este campo NÃO deve ser preenchido automaticamente em nenhuma circunstância
+            // Campo "VISTO - Gerente do Setor" inicia vazio, será preenchido ao selecionar o setor
             const nomeColuna2 = document.getElementById('nome_coluna2');
             if (nomeColuna2) {
                 nomeColuna2.textContent = 'NOME';
-                console.log('✓ Campo "VISTO - Gerente do Setor" inicializado como vazio (preenchimento manual obrigatório)');
-            }
-            
-            // Limpar também a data do VISTO - Gerente do Setor
-            const engD = document.getElementById('eng_d');
-            const engM = document.getElementById('eng_m');
-            const engY = document.getElementById('eng_y');
-            if (engD && engM && engY) {
-                engD.value = '';
-                engM.value = '';
-                engY.value = '';
-                console.log('✓ Data do "VISTO - Gerente do Setor" inicializada como vazia');
             }
             
             // PREENCHER DATA AUTOMATICAMENTE
@@ -3244,16 +3277,12 @@
                 console.log(' Campo "Assinatura Causador" inicializado vazio');
             }
             
-            // PROTEÇÃO ADICIONAL: Monitorar e bloquear qualquer tentativa de preencher nome_coluna2 automaticamente
-            // Este observer garante que nome_coluna2 só pode ser preenchido pelo clique manual do usuário
+            // VISTO - Gerente do Setor: preenchido automaticamente via onAreaResponsavelChange()
+            // Mantém comportamento de clique manual como fallback
             const nomeColuna2Protection = document.getElementById('nome_coluna2');
             const assinaturaColuna2 = document.getElementById('assinatura_coluna2');
             
             if (nomeColuna2Protection && assinaturaColuna2) {
-                let isGerenteClick = false;
-                
-                // SUBSTITUIR o comportamento de clique para exigir confirmação do GERENTE
-                assinaturaColuna2.onclick = null; // Remover onclick anterior
                 assinaturaColuna2.style.cursor = 'pointer';
                 assinaturaColuna2.style.background = 'white';
                 assinaturaColuna2.style.opacity = '1';
@@ -3261,86 +3290,36 @@
                 assinaturaColuna2.addEventListener('click', function(e) {
                     e.preventDefault();
                     e.stopPropagation();
-                    
-                    // Confirmar que é o GERENTE do setor que está clicando
-                    const confirmacao = confirm(' ');
-                    
-                    if (confirmacao) {
-                        isGerenteClick = true;
-                        console.log('✓ Gerente confirmou - preenchendo assinatura');
-                        
-                        // Chamar a função original de preenchimento
-                        fetch('/api/user/info')
-                            .then(response => response.json())
-                            .then(data => {
-                                if (data.success && data.user) {
-                                    const userName = data.user.name || 'USUÁRIO';
-                                    nomeColuna2Protection.textContent = userName;
-                                    
-                                    // Preencher data
-                                    const hoje = new Date();
-                                    const dia = String(hoje.getDate()).padStart(2, '0');
-                                    const mes = String(hoje.getMonth() + 1).padStart(2, '0');
-                                    const ano = String(hoje.getFullYear());
-                                    
-                                    const engD = document.getElementById('eng_d');
-                                    const engM = document.getElementById('eng_m');
-                                    const engY = document.getElementById('eng_y');
-                                    
-                                    if (engD && engM && engY) {
-                                        engD.value = dia;
-                                        engM.value = mes;
-                                        engY.value = ano;
-                                    }
-                                    
-                                    if (typeof mostrarNotificacao === 'function') {
-                                        mostrarNotificacao('✓ Assinatura do gerente registrada!', 'success');
-                                    }
-                                    
-                                    isGerenteClick = false;
-                                }
-                            })
-                            .catch(error => {
-                                console.error('Erro ao buscar informações do usuário:', error);
-                                isGerenteClick = false;
-                            });
-                    } else {
-                        console.log('✗ Usuário cancelou - não é o gerente');
-                        if (typeof mostrarNotificacao === 'function') {
-                            mostrarNotificacao('❌ Assinatura cancelada - apenas o gerente pode assinar', 'warning');
-                        }
+                    // Toggle: se ja tem nome, remove
+                    if (nomeColuna2Protection.textContent && nomeColuna2Protection.textContent.trim() !== '' && nomeColuna2Protection.textContent !== 'NOME') {
+                        nomeColuna2Protection.textContent = 'NOME';
+                        const engD = document.getElementById('eng_d');
+                        const engM = document.getElementById('eng_m');
+                        const engY = document.getElementById('eng_y');
+                        if (engD && engM && engY) { engD.value = ''; engM.value = ''; engY.value = ''; }
+                        if (typeof mostrarNotificacao === 'function') mostrarNotificacao('Assinatura removida', 'info');
+                        return;
                     }
-                });
-                
-                // Observer que SEMPRE reverte mudanças automáticas
-                if (window.MutationObserver) {
-                    const protectionObserver = new MutationObserver(function(mutations) {
-                        mutations.forEach(function(mutation) {
-                            if (!isGerenteClick && nomeColuna2Protection.textContent !== 'NOME') {
-                                console.warn('🚫 BLOQUEADO: Tentativa automática detectada e revertida');
-                                nomeColuna2Protection.textContent = 'NOME';
-                                
-                                // Limpar data também
+                    // Preencher com usuario logado
+                    fetch('/api/user/info')
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success && data.user) {
+                                nomeColuna2Protection.textContent = data.user.name || 'USUARIO';
+                                const hoje = new Date();
                                 const engD = document.getElementById('eng_d');
                                 const engM = document.getElementById('eng_m');
                                 const engY = document.getElementById('eng_y');
                                 if (engD && engM && engY) {
-                                    engD.value = '';
-                                    engM.value = '';
-                                    engY.value = '';
+                                    engD.value = String(hoje.getDate()).padStart(2, '0');
+                                    engM.value = String(hoje.getMonth() + 1).padStart(2, '0');
+                                    engY.value = String(hoje.getFullYear());
                                 }
+                                if (typeof mostrarNotificacao === 'function') mostrarNotificacao('Assinatura do gerente registrada!', 'success');
                             }
-                        });
-                    });
-                    
-                    protectionObserver.observe(nomeColuna2Protection, {
-                        characterData: true,
-                        subtree: true,
-                        childList: true
-                    });
-                    
-                    console.log('🛡️ Proteção MÁXIMA ativa para "VISTO - Gerente do Setor"');
-                }
+                        })
+                        .catch(error => console.error('Erro ao buscar informacoes do usuario:', error));
+                });
             }
         });
     </script>
@@ -4045,6 +4024,84 @@
                 cvInput.addEventListener('input', function() {
                     // Permite números e letras (alfanumérico) e limita a 20 caracteres
                     this.value = this.value.replace(/[^A-Za-z0-9]/g, '').slice(0, 20).toUpperCase();
+                });
+            }
+
+            // Validação de número de desenho duplicado
+            const drawingInput = document.querySelector('[data-field="drawing"]');
+            if (drawingInput) {
+                let checkTimeout;
+                drawingInput.addEventListener('blur', async function() {
+                    const drawingNumber = this.value.trim();
+                    
+                    if (!drawingNumber) return;
+                    
+                    // Debounce para evitar múltiplas requisições
+                    clearTimeout(checkTimeout);
+                    checkTimeout = setTimeout(async () => {
+                        try {
+                            const response = await fetch('/api/rnc/check-drawing', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({ drawing: drawingNumber })
+                            });
+                            
+                            const data = await response.json();
+                            
+                            if (data.success && data.exists) {
+                                console.log('RNCs encontradas:', data.rncs);
+                                
+                                // Criar modal customizado
+                                const modal = document.createElement('div');
+                                modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999;';
+                                
+                                const rncsList = data.rncs.map(r => {
+                                    const rncId = r.id;
+                                    const rncNumber = r.rnc_number;
+                                    console.log('RNC:', rncNumber, 'ID do banco:', rncId);
+                                    return `<div style="padding:8px;border-left:3px solid #ff9800;margin:8px 0;background:#f5f5f5;cursor:pointer;transition:background 0.2s;" 
+                                         onmouseover="this.style.background='#e0e0e0'" 
+                                         onmouseout="this.style.background='#f5f5f5'"
+                                         onclick="window.open('/rnc/${rncId}', '_blank')">
+                                        <strong>RNC ${rncNumber}</strong> - ${r.title || 'Sem título'} 
+                                        <span style="color:#666;">(${r.status})</span>
+                                    </div>`;
+                                }).join('');
+                                
+                                modal.innerHTML = `
+                                    <div style="background:white;border-radius:12px;padding:32px;max-width:500px;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+                                        <div style="text-align:center;margin-bottom:24px;">
+                                            <div style="font-size:48px;color:#ff9800;margin-bottom:8px;">⚠️</div>
+                                            <h2 style="margin:0;color:#333;font-size:20px;">ATENÇÃO!</h2>
+                                        </div>
+                                        <div style="color:#666;margin-bottom:20px;line-height:1.6;">
+                                            <p style="margin:0 0 16px 0;">Já existe${data.count > 1 ? 'm' : ''} <strong>${data.count} RNC${data.count > 1 ? 's' : ''}</strong> com este número de desenho:</p>
+                                            ${rncsList}
+                                        </div>
+                                        <p style="color:#333;margin:20px 0;font-weight:500;">Deseja continuar mesmo assim?</p>
+                                        <div style="display:flex;gap:12px;margin-top:24px;">
+                                            <button id="btnContinue" style="flex:1;padding:12px;background:#4CAF50;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:500;font-size:14px;">OK</button>
+                                            <button id="btnCancel" style="flex:1;padding:12px;background:#f44336;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:500;font-size:14px;">Cancelar</button>
+                                        </div>
+                                    </div>
+                                `;
+                                
+                                document.body.appendChild(modal);
+                                
+                                document.getElementById('btnContinue').onclick = () => {
+                                    document.body.removeChild(modal);
+                                };
+                                
+                                document.getElementById('btnCancel').onclick = () => {
+                                    window.location.href = '/dashboard';
+                                };
+                            }
+                        } catch (error) {
+                            console.error('Erro ao verificar desenho:', error);
+                        }
+                    }, 500);
                 });
             }
         });
