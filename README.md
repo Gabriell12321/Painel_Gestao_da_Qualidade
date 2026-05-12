@@ -18,6 +18,7 @@ O **IPPEL RNC System** é uma plataforma enterprise completa para gestão de **R
 - ✅ Analytics em Tempo Real (dashboards interativos com Chart.js)
 - ✅ Comunicação Integrada (chat geral, por RNC, mensagens privadas)
 - ✅ Gestão de Permissões (controle granular por campo - 46 campos)
+<img width="1901" height="413" alt="image" src="https://github.com/user-attachments/assets/dfd9a659-3fd6-4f76-b688-a9cfc422d2d4" />
 
 ## 🏗️ Arquitetura do Sistema
 
@@ -54,8 +55,10 @@ O **IPPEL RNC System** é uma plataforma enterprise completa para gestão de **R
 - Python 3.9+
 - Node.js 16+ (opcional, para frontend React)
 - SQLite 3.35+
+<img width="1919" height="740" alt="image" src="https://github.com/user-attachments/assets/f941f090-a9d5-49ed-b725-bc1eb274166a" />
 
 ### Instalação do Backend
+<img width="244" height="773" alt="image" src="https://github.com/user-attachments/assets/17452698-df48-4e4f-9c38-9f99f4194598" />
 
 ```bash
 # 1. Clonar repositório
@@ -115,6 +118,7 @@ python server_form.py
 
 # Servidor estará disponível em: http://localhost:5001
 ```
+<img width="1059" height="150" alt="image" src="https://github.com/user-attachments/assets/4de8d4f5-b30d-42ad-a82a-281aaff45975" />
 
 ## 🗄️ Estrutura do Banco de Dados
 
